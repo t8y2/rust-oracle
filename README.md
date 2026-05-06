@@ -2,6 +2,10 @@
 
 A pure Rust driver for Oracle databases. No OCI or ODPI-C dependencies required.
 
+> **Note**: This is a maintained fork of [stiang/oracle-rs](https://github.com/stiang/oracle-rs) by [Stian Grytøyr](https://github.com/stiang). Full credit to the original author for the excellent foundation. This fork adds SYSDBA authentication support and is used by [DBX](https://github.com/t8y2/dbx).
+
+[中文文档](README.zh-CN.md)
+
 [![Crates.io](https://img.shields.io/crates/v/oracle-rs.svg)](https://crates.io/crates/oracle-rs)
 [![Documentation](https://docs.rs/oracle-rs/badge.svg)](https://docs.rs/oracle-rs)
 [![License](https://img.shields.io/crates/l/oracle-rs.svg)](LICENSE-APACHE)
