@@ -1974,11 +1974,11 @@ impl Connection {
                     buf.skip_ub4()?; // iteration number
                     buf.skip_ub4()?; // num iters
                     buf.skip_ub2()?; // buffer length
-                    let num_bytes = buf.read_ub4()?;
+                    let num_bytes = buf.read_ub4()? as usize;
                     if num_bytes > 0 {
                         buf.skip(1)?; // skip repeated length
                         // This bit vector in row header is for the following row data
-                        let bv = buf.read_bytes_vec(num_bytes as usize)?;
+                        let bv = buf.read_bytes_vec(num_bytes - 1)?;
                         bit_vector = Some(bv);
                     }
                     let rxhrid_bytes = buf.read_ub4()?;
@@ -3001,7 +3001,7 @@ impl Connection {
         let num_bytes = buf.read_ub4()? as usize;
         if num_bytes > 0 {
             buf.skip_ub1()?;  // skip repeated length
-            buf.skip(num_bytes)?;  // bit vector
+            buf.skip(num_bytes - 1)?;  // bit vector
         }
         let num_bytes = buf.read_ub4()? as usize;
         if num_bytes > 0 {
