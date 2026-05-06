@@ -140,7 +140,7 @@ impl AcceptMessage {
 
             if buf.has_remaining(data_length) {
                 let data_bytes = buf.read_bytes_vec(data_length)?;
-                Some(String::from_utf8_lossy(&data_bytes).to_string())
+                Some(String::from_utf8_lossy(&data_bytes).into_owned())
             } else {
                 None
             }

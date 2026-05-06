@@ -183,7 +183,7 @@ impl ProtocolMessage {
             }
             bytes.push(b);
         }
-        Ok(String::from_utf8_lossy(&bytes).to_string())
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 }
 

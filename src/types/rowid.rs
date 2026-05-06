@@ -69,7 +69,7 @@ impl RowId {
         // Encode Slot Number (3 characters from 16-bit value)
         convert_base64(&mut buf, self.slot_num as u64, 3, offset);
 
-        Some(String::from_utf8_lossy(&buf).to_string())
+        Some(String::from_utf8_lossy(&buf).into_owned())
     }
 }
 

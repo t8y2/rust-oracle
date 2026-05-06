@@ -316,7 +316,7 @@ impl LobValue {
             Self::Null => Ok(None),
             Self::Empty => Ok(Some(String::new())),
             Self::Inline(data) => {
-                Ok(Some(String::from_utf8_lossy(data).to_string()))
+                Ok(Some(String::from_utf8_lossy(data).into_owned()))
             }
             Self::Locator(_) => Err(Error::Protocol(
                 "LOB data requires explicit read operation".to_string(),

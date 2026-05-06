@@ -5,6 +5,8 @@
 //! - Representing column values in a type-safe manner
 //! - Converting Oracle types to Rust types
 
+use std::sync::Arc;
+
 use crate::buffer::ReadBuffer;
 use crate::constants::{length, OracleType};
 use crate::dbobject::DbObject;
@@ -335,7 +337,7 @@ pub struct Row {
     /// Column values
     values: Vec<Value>,
     /// Column names (optional, for named access)
-    column_names: Option<Vec<String>>,
+    column_names: Option<Arc<Vec<String>>>,
 }
 
 impl Row {
@@ -351,7 +353,7 @@ impl Row {
     pub fn with_names(values: Vec<Value>, names: Vec<String>) -> Self {
         Self {
             values,
-            column_names: Some(names),
+            column_names: Some(Arc::new(names)),
         }
     }
 
@@ -420,6 +422,7 @@ impl std::ops::Index<usize> for Row {
 pub struct RowDataDecoder<'a> {
     columns: &'a [ColumnInfo],
     bit_vector: Option<Vec<u8>>,
+    column_names: Option<Arc<Vec<String>>>,
 }
 
 impl<'a> RowDataDecoder<'a> {
@@ -428,6 +431,7 @@ impl<'a> RowDataDecoder<'a> {
         Self {
             columns,
             bit_vector: None,
+            column_names: None,
         }
     }
 
@@ -459,7 +463,7 @@ impl<'a> RowDataDecoder<'a> {
 
     /// Decode a single row from the buffer
     pub fn decode_row(
-        &self,
+        &mut self,
         buf: &mut ReadBuffer,
         previous_row: Option<&Row>,
     ) -> Result<Row> {
@@ -478,8 +482,13 @@ impl<'a> RowDataDecoder<'a> {
             values.push(value);
         }
 
-        let names: Vec<String> = self.columns.iter().map(|c| c.name.clone()).collect();
-        Ok(Row::with_names(values, names))
+        let names = self.column_names.get_or_insert_with(|| {
+            Arc::new(self.columns.iter().map(|c| c.name.clone()).collect())
+        });
+        Ok(Row {
+            values,
+            column_names: Some(Arc::clone(names)),
+        })
     }
 
     /// Decode a single column value from the buffer
@@ -545,7 +554,13 @@ impl<'a> RowDataDecoder<'a> {
 
     /// Read chunked data (for long values)
     fn read_chunked_data(&self, buf: &mut ReadBuffer) -> Result<Option<Vec<u8>>> {
-        let mut result = Vec::new();
+        let first_len = buf.read_ub4()?;
+        if first_len == 0 {
+            return Ok(None);
+        }
+        let first_chunk = buf.read_bytes_vec(first_len as usize)?;
+        let mut result = Vec::with_capacity(first_len as usize * 2);
+        result.extend_from_slice(&first_chunk);
 
         loop {
             let chunk_len = buf.read_ub4()?;
@@ -556,11 +571,7 @@ impl<'a> RowDataDecoder<'a> {
             result.extend_from_slice(&chunk);
         }
 
-        if result.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(result))
-        }
+        Ok(Some(result))
     }
 
     /// Decode a string value
@@ -683,7 +694,7 @@ impl<'a> RowDataDecoder<'a> {
                     Ok(Value::RowId(rowid))
                 } else {
                     // Logical ROWID - return as string (base64 encoded)
-                    let s = String::from_utf8_lossy(&data[1..]).to_string();
+                    let s = String::from_utf8_lossy(&data[1..]).into_owned();
                     Ok(Value::String(s))
                 }
             }

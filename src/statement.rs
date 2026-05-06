@@ -3,6 +3,8 @@
 //! This module provides types for representing and executing SQL statements,
 //! including support for bind parameters and result set metadata.
 
+use std::sync::Arc;
+
 use crate::constants::{BindDirection, OracleType};
 use crate::row::Value;
 use crate::types::RefCursor;
@@ -387,9 +389,9 @@ impl ColumnInfo {
 #[derive(Debug, Clone)]
 pub struct Statement {
     /// The original SQL text
-    sql: String,
+    sql: Arc<String>,
     /// SQL as bytes (for sending to server)
-    sql_bytes: Vec<u8>,
+    sql_bytes: Arc<Vec<u8>>,
     /// Statement type
     statement_type: StatementType,
     /// Cursor ID assigned by server (0 = not yet assigned)
@@ -397,7 +399,7 @@ pub struct Statement {
     /// List of bind parameters in order of appearance
     bind_info_list: Vec<BindInfo>,
     /// Column metadata for queries
-    columns: Vec<ColumnInfo>,
+    columns: Arc<Vec<ColumnInfo>>,
     /// Whether the statement has been executed
     executed: bool,
     /// Whether bind metadata has changed
@@ -414,7 +416,8 @@ impl Statement {
     /// Create a new statement from SQL text
     pub fn new(sql: impl Into<String>) -> Self {
         let sql = sql.into();
-        let sql_bytes = sql.as_bytes().to_vec();
+        let sql_bytes = Arc::new(sql.as_bytes().to_vec());
+        let sql = Arc::new(sql);
 
         let mut stmt = Self {
             sql,
@@ -422,7 +425,7 @@ impl Statement {
             statement_type: StatementType::Unknown,
             cursor_id: 0,
             bind_info_list: Vec::new(),
-            columns: Vec::new(),
+            columns: Arc::new(Vec::new()),
             executed: false,
             binds_changed: false,
             requires_define: false,
@@ -496,7 +499,7 @@ impl Statement {
 
     /// Set column metadata (from server describe)
     pub fn set_columns(&mut self, columns: Vec<ColumnInfo>) {
-        self.columns = columns;
+        self.columns = Arc::new(columns);
     }
 
     /// Get the number of columns
@@ -776,7 +779,7 @@ impl Statement {
     /// Clear statement state for re-execution
     pub fn clear(&mut self) {
         self.cursor_id = 0;
-        self.columns.clear();
+        self.columns = Arc::new(Vec::new());
         self.executed = false;
         self.binds_changed = false;
         self.requires_define = false;
@@ -790,14 +793,14 @@ impl Statement {
     /// column metadata, and bind info are preserved.
     pub fn clone_for_reuse(&self) -> Self {
         Self {
-            sql: self.sql.clone(),
-            sql_bytes: self.sql_bytes.clone(),
+            sql: Arc::clone(&self.sql),
+            sql_bytes: Arc::clone(&self.sql_bytes),
             statement_type: self.statement_type,
-            cursor_id: self.cursor_id, // Preserve cursor!
+            cursor_id: self.cursor_id,
             bind_info_list: self.bind_info_list.clone(),
-            columns: self.columns.clone(),
+            columns: Arc::clone(&self.columns),
             executed: self.executed,
-            binds_changed: false, // Reset for new execution
+            binds_changed: false,
             requires_define: false,
             no_prefetch: self.no_prefetch,
             is_returning: self.is_returning,

@@ -213,16 +213,16 @@ impl StatementCache {
 
     /// Evict the least recently used entry
     fn evict_lru(&mut self) {
-        // Find the LRU entry (first entry that's not in use)
-        let lru_key = self
+        let lru_index = self
             .cache
             .iter()
-            .filter(|(_, cached)| !cached.in_use)
-            .min_by_key(|(_, cached)| cached.last_used)
-            .map(|(key, _)| key.clone());
+            .enumerate()
+            .filter(|(_, (_, cached))| !cached.in_use)
+            .min_by_key(|(_, (_, cached))| cached.last_used)
+            .map(|(idx, _)| idx);
 
-        if let Some(key) = lru_key {
-            if let Some(cached) = self.cache.swap_remove(&key) {
+        if let Some(idx) = lru_index {
+            if let Some((key, cached)) = self.cache.swap_remove_index(idx) {
                 tracing::trace!(
                     sql = key,
                     cursor_id = cached.statement.cursor_id(),
@@ -230,7 +230,6 @@ impl StatementCache {
                 );
             }
         } else {
-            // All statements are in use - this is rare but possible
             tracing::warn!("Statement cache full and all statements in use");
         }
     }

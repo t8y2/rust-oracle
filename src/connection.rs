@@ -3166,7 +3166,7 @@ impl Connection {
                         Ok(Value::String(num.value))
                     }
                     OracleType::Varchar | OracleType::Char | OracleType::Long => {
-                        let s = String::from_utf8_lossy(&bytes).to_string();
+                        let s = String::from_utf8_lossy(&bytes).into_owned();
                         Ok(Value::String(s))
                     }
                     OracleType::Raw | OracleType::LongRaw => {
@@ -3190,7 +3190,7 @@ impl Connection {
                     }
                     _ => {
                         // Default: return as raw bytes or string
-                        let s = String::from_utf8_lossy(&bytes).to_string();
+                        let s = String::from_utf8_lossy(&bytes).into_owned();
                         Ok(Value::String(s))
                     }
                 }
@@ -4348,7 +4348,7 @@ impl Connection {
                         String::from_utf16_lossy(&chars)
                     } else {
                         // UTF-8 encoding
-                        String::from_utf8_lossy(&data).to_string()
+                        String::from_utf8_lossy(&data).into_owned()
                     };
                     Ok(LobData::String(text))
                 }

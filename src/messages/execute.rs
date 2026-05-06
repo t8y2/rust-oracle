@@ -573,7 +573,18 @@ impl<'a> ExecuteMessage<'a> {
                 let size = match value {
                     Value::String(s) => s.len() as u32,
                     Value::Bytes(b) => b.len() as u32,
-                    Value::Json(json) => serde_json::to_string(json).map(|s| s.len() as u32).unwrap_or(100),
+                    Value::Json(json) => {
+                        struct CountWriter(usize);
+                        impl std::io::Write for CountWriter {
+                            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                                self.0 += buf.len();
+                                Ok(buf.len())
+                            }
+                            fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+                        }
+                        let mut cw = CountWriter(0);
+                        serde_json::to_writer(&mut cw, json).map(|_| cw.0 as u32).unwrap_or(100)
+                    }
                     Value::Vector(vec) => (vec.dimensions() * 8) as u32, // Estimate: 8 bytes per dimension max
                     _ => 0, // Fixed-size types don't need max calculation
                 };

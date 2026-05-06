@@ -496,7 +496,7 @@ impl AuthMessage {
         }
 
         let bytes = buf.read_bytes_vec(actual_len)?;
-        Ok(String::from_utf8_lossy(&bytes).to_string())
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
     /// Generate the verifier (session keys and combo key)

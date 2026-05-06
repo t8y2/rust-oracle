@@ -72,11 +72,11 @@ fn encrypt_cbc_256_internal(key: &[u8], plaintext: &[u8], use_pkcs7: bool) -> Re
     let total_len = buffer.len();
 
     let cipher = Aes256CbcEnc::new(key.into(), &ZERO_IV.into());
-    let ciphertext = cipher
+    cipher
         .encrypt_padded_mut::<NoPadding>(&mut buffer, total_len)
         .map_err(|e| Error::Protocol(format!("AES encryption failed: {}", e)))?;
 
-    Ok(ciphertext.to_vec())
+    Ok(buffer)
 }
 
 /// Decrypt data using AES-256-CBC with zero IV
@@ -97,11 +97,11 @@ pub fn decrypt_cbc_256(key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
 
     let cipher = Aes256CbcDec::new(key.into(), &ZERO_IV.into());
     let mut buffer = ciphertext.to_vec();
-    let plaintext = cipher
+    cipher
         .decrypt_padded_mut::<NoPadding>(&mut buffer)
         .map_err(|e| Error::Protocol(format!("AES decryption failed: {}", e)))?;
 
-    Ok(plaintext.to_vec())
+    Ok(buffer)
 }
 
 /// Encrypt data using AES-192-CBC with zero IV (for 11g authentication)
@@ -121,11 +121,11 @@ pub fn encrypt_cbc_192(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>> {
     let msg_len = plaintext.len();
 
     let cipher = Aes192CbcEnc::new(key.into(), &ZERO_IV.into());
-    let ciphertext = cipher
+    cipher
         .encrypt_padded_mut::<NoPadding>(&mut buffer, msg_len + padding_len)
         .map_err(|e| Error::Protocol(format!("AES encryption failed: {}", e)))?;
 
-    Ok(ciphertext.to_vec())
+    Ok(buffer)
 }
 
 /// Decrypt data using AES-192-CBC with zero IV (for 11g authentication)
@@ -146,11 +146,11 @@ pub fn decrypt_cbc_192(key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
 
     let cipher = Aes192CbcDec::new(key.into(), &ZERO_IV.into());
     let mut buffer = ciphertext.to_vec();
-    let plaintext = cipher
+    cipher
         .decrypt_padded_mut::<NoPadding>(&mut buffer)
         .map_err(|e| Error::Protocol(format!("AES decryption failed: {}", e)))?;
 
-    Ok(plaintext.to_vec())
+    Ok(buffer)
 }
 
 /// Derive a key using PBKDF2-HMAC-SHA512
