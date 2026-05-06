@@ -132,6 +132,8 @@ pub struct Config {
     pub ncharset_id: u16,
     /// Statement cache size (0 = disabled)
     pub stmtcachesize: usize,
+    /// Connect as SYSDBA
+    pub sysdba: bool,
 }
 
 impl Config {
@@ -156,6 +158,7 @@ impl Config {
             charset_id: charset::UTF8,
             ncharset_id: charset::UTF16,
             stmtcachesize: DEFAULT_STMTCACHESIZE,
+            sysdba: false,
         }
     }
 
@@ -180,6 +183,7 @@ impl Config {
             charset_id: charset::UTF8,
             ncharset_id: charset::UTF16,
             stmtcachesize: DEFAULT_STMTCACHESIZE,
+            sysdba: false,
         }
     }
 
@@ -384,6 +388,7 @@ impl Default for Config {
             charset_id: charset::UTF8,
             ncharset_id: charset::UTF16,
             stmtcachesize: DEFAULT_STMTCACHESIZE,
+            sysdba: false,
         }
     }
 }

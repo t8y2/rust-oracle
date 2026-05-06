@@ -1086,6 +1086,10 @@ impl Connection {
             &service_name,
         );
 
+        if self.config.sysdba {
+            auth = auth.with_sysdba();
+        }
+
         // Phase one: send username and session info
         {
             let mut inner = self.inner.lock().await;
