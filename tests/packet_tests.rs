@@ -1,8 +1,8 @@
 //! Integration tests for packet module
 
 use bytes::Bytes;
-use oracle_rs::constants::PacketType;
-use oracle_rs::packet::{Packet, PacketHeader};
+use rust_oracle::constants::PacketType;
+use rust_oracle::packet::{Packet, PacketHeader};
 
 #[test]
 fn test_packet_header_connect() {
@@ -14,7 +14,7 @@ fn test_packet_header_connect() {
 
 #[test]
 fn test_packet_header_roundtrip_all_types() {
-    use oracle_rs::buffer::WriteBuffer;
+    use rust_oracle::buffer::WriteBuffer;
 
     let types = [
         PacketType::Connect,
@@ -162,7 +162,7 @@ fn test_packet_control() {
 
 #[test]
 fn test_packet_header_flags() {
-    use oracle_rs::constants::packet_flags;
+    use rust_oracle::constants::packet_flags;
 
     let header = PacketHeader::with_flags(PacketType::Connect, 100, packet_flags::TLS_RENEG);
 
@@ -177,7 +177,7 @@ fn test_packet_header_flags() {
 
 #[test]
 fn test_packet_large_sdu() {
-    use oracle_rs::buffer::WriteBuffer;
+    use rust_oracle::buffer::WriteBuffer;
 
     // Large SDU uses 4-byte length
     let header = PacketHeader::new(PacketType::Data, 32768);

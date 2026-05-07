@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use oracle_rs::{Connection, Config, DrcpOptions};
+//! use rust_oracle::{Connection, Config, DrcpOptions};
 //!
 //! // Configure DRCP
 //! let drcp = DrcpOptions::new()

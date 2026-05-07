@@ -1,6 +1,6 @@
 //! Integration tests for buffer module
 
-use oracle_rs::buffer::{ReadBuffer, WriteBuffer};
+use rust_oracle::buffer::{ReadBuffer, WriteBuffer};
 
 #[test]
 fn test_buffer_roundtrip_various_sizes() {

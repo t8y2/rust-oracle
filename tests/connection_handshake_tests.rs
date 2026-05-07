@@ -4,10 +4,10 @@
 //! without requiring an actual Oracle database connection.
 
 use bytes::Bytes;
-use oracle_rs::constants::{PacketType, PACKET_HEADER_SIZE};
-use oracle_rs::messages::{AcceptMessage, ConnectMessage, RedirectMessage, RefuseMessage};
-use oracle_rs::packet::{Packet, PacketHeader};
-use oracle_rs::Config;
+use rust_oracle::constants::{PacketType, PACKET_HEADER_SIZE};
+use rust_oracle::messages::{AcceptMessage, ConnectMessage, RedirectMessage, RefuseMessage};
+use rust_oracle::packet::{Packet, PacketHeader};
+use rust_oracle::Config;
 
 /// Helper to create a mock packet with the given type and payload
 fn make_packet(packet_type: PacketType, payload: &[u8]) -> Packet {
@@ -40,8 +40,8 @@ mod connect_message_tests {
         let version_desired = u16::from_be_bytes([packet_bytes[8], packet_bytes[9]]);
         let version_minimum = u16::from_be_bytes([packet_bytes[10], packet_bytes[11]]);
 
-        assert_eq!(version_desired, oracle_rs::constants::version::DESIRED);
-        assert_eq!(version_minimum, oracle_rs::constants::version::MINIMUM);
+        assert_eq!(version_desired, rust_oracle::constants::version::DESIRED);
+        assert_eq!(version_minimum, rust_oracle::constants::version::MINIMUM);
     }
 
     #[test]
@@ -191,7 +191,7 @@ mod accept_message_tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, oracle_rs::Error::NativeNetworkEncryptionRequired));
+        assert!(matches!(err, rust_oracle::Error::NativeNetworkEncryptionRequired));
     }
 
     #[test]
@@ -201,7 +201,7 @@ mod accept_message_tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, oracle_rs::Error::UnexpectedPacketType { .. }));
+        assert!(matches!(err, rust_oracle::Error::UnexpectedPacketType { .. }));
     }
 }
 
@@ -227,7 +227,7 @@ mod refuse_message_tests {
 
         // Convert to error
         let err = refuse.into_error(Some("BADSERVICE"));
-        assert!(matches!(err, oracle_rs::Error::InvalidServiceName { .. }));
+        assert!(matches!(err, rust_oracle::Error::InvalidServiceName { .. }));
     }
 
     #[test]
@@ -248,7 +248,7 @@ mod refuse_message_tests {
         assert_eq!(refuse.error_code, Some(12505));
 
         let err = refuse.into_error(Some("BADSID"));
-        assert!(matches!(err, oracle_rs::Error::InvalidSid { .. }));
+        assert!(matches!(err, rust_oracle::Error::InvalidSid { .. }));
     }
 
     #[test]
@@ -266,7 +266,7 @@ mod refuse_message_tests {
 
         assert_eq!(refuse.error_code, Some(99999));
         let err = refuse.into_error(None);
-        assert!(matches!(err, oracle_rs::Error::ConnectionRefused { .. }));
+        assert!(matches!(err, rust_oracle::Error::ConnectionRefused { .. }));
     }
 
     #[test]
@@ -454,6 +454,6 @@ mod connection_flow_tests {
         let error = refuse.into_error(Some("NONEXISTENT"));
 
         // Verify error type and message
-        assert!(matches!(error, oracle_rs::Error::InvalidServiceName { .. }));
+        assert!(matches!(error, rust_oracle::Error::InvalidServiceName { .. }));
     }
 }

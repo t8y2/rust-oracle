@@ -3,13 +3,13 @@
 //! These tests verify the O5LOGON authentication protocol implementation
 //! without requiring an actual Oracle database connection.
 
-use oracle_rs::constants::{auth_mode, verifier_type, FunctionCode, PacketType, PACKET_HEADER_SIZE};
-use oracle_rs::crypto::{
+use rust_oracle::constants::{auth_mode, verifier_type, FunctionCode, PacketType, PACKET_HEADER_SIZE};
+use rust_oracle::crypto::{
     encrypt_cbc_192, encrypt_cbc_256, generate_11g_password_hash, generate_12c_password_hash,
     pbkdf2_derive,
 };
-use oracle_rs::messages::{AuthMessage, AuthPhase};
-use oracle_rs::Capabilities;
+use rust_oracle::messages::{AuthMessage, AuthPhase};
+use rust_oracle::Capabilities;
 
 mod auth_message_tests {
     use super::*;
@@ -200,7 +200,7 @@ mod auth_mode_tests {
 
 mod authentication_flow_tests {
     use super::*;
-    use oracle_rs::constants::{PacketType, PACKET_HEADER_SIZE};
+    use rust_oracle::constants::{PacketType, PACKET_HEADER_SIZE};
 
     /// Simulates the complete authentication flow (without actual network)
     #[test]
@@ -247,7 +247,7 @@ mod authentication_flow_tests {
 }
 
 mod session_data_tests {
-    use oracle_rs::messages::SessionData;
+    use rust_oracle::messages::SessionData;
     use std::collections::HashMap;
 
     #[test]
@@ -304,7 +304,7 @@ mod session_data_tests {
 mod security_tests {
     #[test]
     fn test_salt_is_random() {
-        use oracle_rs::crypto::generate_salt;
+        use rust_oracle::crypto::generate_salt;
 
         let salt1 = generate_salt();
         let salt2 = generate_salt();
@@ -323,7 +323,7 @@ mod security_tests {
 
     #[test]
     fn test_session_key_is_random() {
-        use oracle_rs::crypto::generate_session_key_part;
+        use rust_oracle::crypto::generate_session_key_part;
 
         let key1 = generate_session_key_part(48);
         let key2 = generate_session_key_part(48);

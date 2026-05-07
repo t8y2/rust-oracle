@@ -5,10 +5,10 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use oracle_rs::{Connection, Config};
+//! use rust_oracle::{Connection, Config};
 //!
 //! #[tokio::main]
-//! async fn main() -> oracle_rs::Result<()> {
+//! async fn main() -> rust_oracle::Result<()> {
 //!     // Create a connection
 //!     let conn = Connection::connect("localhost:1521/ORCLPDB1", "user", "password").await?;
 //!
@@ -696,9 +696,9 @@ impl ConnectionInner {
 /// # Example
 ///
 /// ```rust,no_run
-/// use oracle_rs::{Config, Connection, Value};
+/// use rust_oracle::{Config, Connection, Value};
 ///
-/// # async fn example() -> oracle_rs::Result<()> {
+/// # async fn example() -> rust_oracle::Result<()> {
 /// // Create a connection
 /// let config = Config::new("localhost", 1521, "FREEPDB1", "user", "password");
 /// let conn = Connection::connect_with_config(config).await?;
@@ -764,9 +764,9 @@ impl Connection {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use oracle_rs::{Config, Connection};
+    /// use rust_oracle::{Config, Connection};
     ///
-    /// # async fn example() -> oracle_rs::Result<()> {
+    /// # async fn example() -> rust_oracle::Result<()> {
     /// let config = Config::new("localhost", 1521, "FREEPDB1", "user", "password")
     ///     .with_statement_cache_size(50);
     ///
@@ -1173,7 +1173,7 @@ impl Connection {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use oracle_rs::Value;
+    /// use rust_oracle::Value;
     ///
     /// // Query with bind parameters
     /// let result = conn.execute(
@@ -1257,7 +1257,7 @@ impl Connection {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use oracle_rs::Value;
+    /// use rust_oracle::Value;
     ///
     /// let result = conn.query(
     ///     "SELECT * FROM employees WHERE salary > :1",
@@ -1401,7 +1401,7 @@ impl Connection {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use oracle_rs::{Connection, BindParam, OracleType, Value};
+    /// use rust_oracle::{Connection, BindParam, OracleType, Value};
     ///
     /// // Call a procedure with IN and OUT parameters
     /// let result = conn.execute_plsql(
@@ -1420,7 +1420,7 @@ impl Connection {
     /// # REF CURSOR Example
     ///
     /// ```rust,ignore
-    /// use oracle_rs::{Connection, BindParam, Value};
+    /// use rust_oracle::{Connection, BindParam, Value};
     ///
     /// // Call a procedure that returns a REF CURSOR
     /// let result = conn.execute_plsql(
@@ -1539,7 +1539,7 @@ impl Connection {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use oracle_rs::{Connection, BatchBuilder, Value};
+    /// use rust_oracle::{Connection, BatchBuilder, Value};
     ///
     /// let batch = BatchBuilder::new("INSERT INTO users (id, name) VALUES (:1, :2)")
     ///     .add_row(vec![Value::Integer(1), Value::String("Alice".to_string())])
@@ -1811,7 +1811,7 @@ impl Connection {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use oracle_rs::{Connection, BindParam, Value};
+    /// use rust_oracle::{Connection, BindParam, Value};
     ///
     /// // Call a procedure that returns a REF CURSOR
     /// let result = conn.execute_plsql(
@@ -3948,8 +3948,8 @@ impl Connection {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use oracle_rs::{Connection, Value};
-    /// # async fn example(conn: Connection) -> oracle_rs::Result<()> {
+    /// # use rust_oracle::{Connection, Value};
+    /// # async fn example(conn: Connection) -> rust_oracle::Result<()> {
     /// conn.execute("INSERT INTO users (name) VALUES (:1)", &["Alice".into()]).await?;
     /// conn.execute("INSERT INTO users (name) VALUES (:1)", &["Bob".into()]).await?;
     /// conn.commit().await?; // Both inserts are now permanent
@@ -3972,8 +3972,8 @@ impl Connection {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use oracle_rs::{Connection, Value};
-    /// # async fn example(conn: Connection) -> oracle_rs::Result<()> {
+    /// # use rust_oracle::{Connection, Value};
+    /// # async fn example(conn: Connection) -> rust_oracle::Result<()> {
     /// conn.execute("DELETE FROM users WHERE id = :1", &[1.into()]).await?;
     /// // Oops, wrong user!
     /// conn.rollback().await?; // Delete is undone
@@ -4033,8 +4033,8 @@ impl Connection {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use oracle_rs::Connection;
-    /// # async fn example(conn: Connection) -> oracle_rs::Result<()> {
+    /// # use rust_oracle::Connection;
+    /// # async fn example(conn: Connection) -> rust_oracle::Result<()> {
     /// if conn.ping().await.is_ok() {
     ///     println!("Connection is alive");
     /// } else {
@@ -4549,7 +4549,7 @@ impl Connection {
     ///
     /// # Example
     /// ```ignore
-    /// use oracle_rs::OracleType;
+    /// use rust_oracle::OracleType;
     ///
     /// let locator = conn.create_temp_lob(OracleType::Clob).await?;
     /// conn.write_clob(&locator, 1, "Hello, World!").await?;
@@ -4984,8 +4984,8 @@ impl Connection {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use oracle_rs::{Config, Connection};
-    /// # async fn example() -> oracle_rs::Result<()> {
+    /// # use rust_oracle::{Config, Connection};
+    /// # async fn example() -> rust_oracle::Result<()> {
     /// let config = Config::new("localhost", 1521, "FREEPDB1", "user", "password");
     /// let conn = Connection::connect_with_config(config).await?;
     ///

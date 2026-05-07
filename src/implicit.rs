@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use oracle_rs::Connection;
+//! use rust_oracle::Connection;
 //!
 //! let conn = Connection::connect("localhost:1521/ORCLPDB1", "user", "pass").await?;
 //!

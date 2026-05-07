@@ -8,7 +8,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use oracle_rs::{Connection, DbObjectType, DbObject};
+//! use rust_oracle::{Connection, DbObjectType, DbObject};
 //!
 //! let conn = Connection::connect("localhost:1521/ORCLPDB1", "user", "pass").await?;
 //!

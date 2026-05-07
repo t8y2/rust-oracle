@@ -75,7 +75,7 @@ impl BindInfo {
 /// # Examples
 ///
 /// ```ignore
-/// use oracle_rs::{BindParam, BindDirection, OracleType, Value};
+/// use rust_oracle::{BindParam, BindDirection, OracleType, Value};
 ///
 /// // IN parameter (default)
 /// let in_param = BindParam::input(Value::Integer(42));

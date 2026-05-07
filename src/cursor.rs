@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use oracle_rs::{Connection, ScrollableCursor, FetchOrientation};
+//! use rust_oracle::{Connection, ScrollableCursor, FetchOrientation};
 //!
 //! let conn = Connection::connect("localhost:1521/ORCLPDB1", "user", "pass").await?;
 //!

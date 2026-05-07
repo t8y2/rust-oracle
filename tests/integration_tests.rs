@@ -31,7 +31,7 @@
 //!   ORACLE_USER: Oracle username (default: testuser)
 //!   ORACLE_PASSWORD: Oracle password (default: testpass)
 
-use oracle_rs::{Config, Connection, Error};
+use rust_oracle::{Config, Connection, Error};
 
 /// Get test configuration from environment variables
 ///
@@ -346,7 +346,7 @@ mod data_type_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_clob_data_type() {
-        use oracle_rs::Value;
+        use rust_oracle::Value;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -382,7 +382,7 @@ mod data_type_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_clob_read_content() {
-        use oracle_rs::{Value, LobData};
+        use rust_oracle::{Value, LobData};
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -425,7 +425,7 @@ mod data_type_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_lob_length() {
-        use oracle_rs::Value;
+        use rust_oracle::Value;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -464,7 +464,7 @@ mod data_type_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_clob_write_and_read() {
-        use oracle_rs::Value;
+        use rust_oracle::Value;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -557,7 +557,7 @@ mod data_type_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_lob_write() {
-        use oracle_rs::Value;
+        use rust_oracle::Value;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -639,7 +639,7 @@ mod data_type_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_lob_write_medium() {
-        use oracle_rs::Value;
+        use rust_oracle::Value;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -719,7 +719,7 @@ mod data_type_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_lob_trim() {
-        use oracle_rs::Value;
+        use rust_oracle::Value;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -802,7 +802,7 @@ mod data_type_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_clob_read_with_convenience_method() {
-        use oracle_rs::Value;
+        use rust_oracle::Value;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -850,7 +850,7 @@ mod data_type_tests {
         // Check that the row was returned (ID should be 3, rest are NULL)
         let row = &result.rows[0];
         // ID column should have value 3
-        assert!(matches!(&row.values()[0], oracle_rs::Value::String(s) if s == "3"));
+        assert!(matches!(&row.values()[0], rust_oracle::Value::String(s) if s == "3"));
 
         conn.close().await.expect("Failed to close");
     }
@@ -888,7 +888,7 @@ mod data_type_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_large_clob_read() {
-        use oracle_rs::Value;
+        use rust_oracle::Value;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -952,7 +952,7 @@ mod data_type_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_streaming_lob_read() {
-        use oracle_rs::Value;
+        use rust_oracle::Value;
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
 
@@ -1009,11 +1009,11 @@ mod data_type_tests {
                     let tb = Arc::clone(&total_bytes_clone);
                     async move {
                         match chunk {
-                            oracle_rs::LobData::String(s) => {
+                            rust_oracle::LobData::String(s) => {
                                 cc.fetch_add(1, Ordering::SeqCst);
                                 tb.fetch_add(s.len(), Ordering::SeqCst);
                             }
-                            oracle_rs::LobData::Bytes(b) => {
+                            rust_oracle::LobData::Bytes(b) => {
                                 cc.fetch_add(1, Ordering::SeqCst);
                                 tb.fetch_add(b.len(), Ordering::SeqCst);
                             }
@@ -1454,7 +1454,7 @@ mod subquery_tests {
 /// Tests for bind parameters
 mod bind_parameter_tests {
     use super::*;
-    use oracle_rs::Value;
+    use rust_oracle::Value;
 
     #[tokio::test]
     #[ignore = "requires Oracle database"]
@@ -1652,7 +1652,7 @@ mod bind_parameter_tests {
 
 mod batch_execution_tests {
     use super::*;
-    use oracle_rs::BatchBuilder;
+    use rust_oracle::BatchBuilder;
 
     #[tokio::test]
     #[ignore = "requires Oracle database"]
@@ -1907,7 +1907,7 @@ mod batch_execution_tests {
 
 mod scrollable_cursor_tests {
     use super::*;
-    use oracle_rs::FetchOrientation;
+    use rust_oracle::FetchOrientation;
 
     #[tokio::test]
     #[ignore = "requires Oracle database"]
@@ -2029,7 +2029,7 @@ mod scrollable_cursor_tests {
 
 mod lob_bind_tests {
     use super::*;
-    use oracle_rs::Value;
+    use rust_oracle::Value;
 
     #[tokio::test]
     #[ignore = "requires Oracle database"]
@@ -2150,7 +2150,7 @@ mod lob_bind_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_create_temp_clob() {
-        use oracle_rs::{OracleType, LobData};
+        use rust_oracle::{OracleType, LobData};
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -2187,7 +2187,7 @@ mod lob_bind_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_create_temp_blob() {
-        use oracle_rs::{OracleType, LobData};
+        use rust_oracle::{OracleType, LobData};
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -2224,7 +2224,7 @@ mod lob_bind_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_temp_lob_insert() {
-        use oracle_rs::{OracleType, LobValue};
+        use rust_oracle::{OracleType, LobValue};
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -2300,7 +2300,7 @@ mod lob_bind_tests {
 /// JSON/OSON tests - requires Oracle 21c+ with JSON support
 mod json_tests {
     use super::*;
-    use oracle_rs::Value;
+    use rust_oracle::Value;
 
     #[tokio::test]
     #[ignore = "requires Oracle database with JSON support (21c+)"]
@@ -2442,7 +2442,7 @@ mod json_tests {
         conn.execute("DELETE FROM json_bind_test", &[]).await.ok();
 
         // Create a JSON value using serde_json
-        let json_data = oracle_rs::serde_json::json!({
+        let json_data = rust_oracle::serde_json::json!({
             "product": "Widget",
             "price": 19.99,
             "in_stock": true,
@@ -2532,7 +2532,7 @@ mod json_tests {
 
 mod vector_tests {
     use super::*;
-    use oracle_rs::{OracleVector, VectorData, Value};
+    use rust_oracle::{OracleVector, VectorData, Value};
 
     #[tokio::test]
     #[ignore = "requires Oracle 23ai database"]
@@ -2892,7 +2892,7 @@ mod vector_tests {
 
 mod plsql_tests {
     use super::*;
-    use oracle_rs::{BindParam, OracleType, Value};
+    use rust_oracle::{BindParam, OracleType, Value};
 
     // ============================================================
     // PL/SQL OUT Parameter Tests
@@ -3099,7 +3099,7 @@ mod plsql_tests {
 /// Tests for LOB queries with bind parameters (regression tests for LOB re-execute fix)
 mod lob_bind_param_tests {
     use super::*;
-    use oracle_rs::Value;
+    use rust_oracle::Value;
 
     /// Test SELECT with bind parameters on CLOB table
     /// This is a regression test for the bug where LOB re-execute incorrectly
@@ -3157,7 +3157,7 @@ mod lob_bind_param_tests {
 /// Tests for binding strings/bytes to LOB columns using workarounds
 mod lob_workaround_tests {
     use super::*;
-    use oracle_rs::{Value, LobData};
+    use rust_oracle::{Value, LobData};
 
     /// Test inserting data into CLOB using EMPTY_CLOB() + FOR UPDATE pattern
     #[tokio::test]
@@ -3422,7 +3422,7 @@ mod lob_workaround_tests {
 /// Tests for REF CURSOR functionality
 mod ref_cursor_tests {
     use super::*;
-    use oracle_rs::{BindParam, Value};
+    use rust_oracle::{BindParam, Value};
 
     /// Test basic REF CURSOR from PL/SQL
     #[tokio::test]
@@ -3703,7 +3703,7 @@ mod ref_cursor_tests {
 /// Tests for BFILE (external file) functionality
 mod bfile_tests {
     use super::*;
-    use oracle_rs::Value;
+    use rust_oracle::Value;
 
     /// Test creating a BFILE locator via BFILENAME() and checking its properties
     /// This doesn't require actual file access - just tests locator creation and parsing
@@ -3863,7 +3863,7 @@ mod bfile_tests {
 /// Tests for statement caching functionality
 mod statement_cache_tests {
     use super::*;
-    use oracle_rs::Value;
+    use rust_oracle::Value;
 
     /// Helper to connect with specific cache size
     async fn connect_with_cache(cache_size: usize) -> Result<Connection, Error> {
@@ -4050,7 +4050,7 @@ mod statement_cache_tests {
 /// Tests for PL/SQL Collections (VARRAY, Nested Table)
 mod collection_tests {
     use super::*;
-    use oracle_rs::dbobject::CollectionType;
+    use rust_oracle::dbobject::CollectionType;
 
     /// Setup: Create test collection types
     /// Run this manually before tests:
@@ -4197,7 +4197,7 @@ mod collection_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database and test types"]
     async fn test_varray_out_param() {
-        use oracle_rs::statement::BindParam;
+        use rust_oracle::statement::BindParam;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -4242,14 +4242,14 @@ mod collection_tests {
 
                 // Should be a Collection or Bytes (fallback)
                 match out_val {
-                    oracle_rs::row::Value::Collection(coll) => {
+                    rust_oracle::row::Value::Collection(coll) => {
                         println!("Got collection with {} elements", coll.elements.len());
                         for (i, elem) in coll.elements.iter().enumerate() {
                             println!("  [{}] = {:?}", i, elem);
                         }
                         assert_eq!(coll.elements.len(), 5, "Should have 5 elements");
                     }
-                    oracle_rs::row::Value::Bytes(bytes) => {
+                    rust_oracle::row::Value::Bytes(bytes) => {
                         println!("Got raw bytes (collection decoding pending): {} bytes", bytes.len());
                         println!("Raw: {:02x?}", &bytes[..std::cmp::min(50, bytes.len())]);
                     }
@@ -4274,7 +4274,7 @@ mod collection_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database and test types"]
     async fn test_nested_table_out_param() {
-        use oracle_rs::statement::BindParam;
+        use rust_oracle::statement::BindParam;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -4316,14 +4316,14 @@ mod collection_tests {
                     let out_val = &plsql_result.out_values[0];
 
                     match out_val {
-                        oracle_rs::row::Value::Collection(coll) => {
+                        rust_oracle::row::Value::Collection(coll) => {
                             println!("Got collection with {} elements", coll.elements.len());
                             for (i, elem) in coll.elements.iter().enumerate() {
                                 println!("  [{}] = {:?}", i, elem);
                             }
                             assert_eq!(coll.elements.len(), 4, "Should have 4 elements");
                         }
-                        oracle_rs::row::Value::Bytes(bytes) => {
+                        rust_oracle::row::Value::Bytes(bytes) => {
                             println!("Got raw bytes: {} bytes", bytes.len());
                         }
                         other => {
@@ -4347,8 +4347,8 @@ mod collection_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database and test types"]
     async fn test_varray_in_simple() {
-        use oracle_rs::dbobject::DbObject;
-        use oracle_rs::statement::BindParam;
+        use rust_oracle::dbobject::DbObject;
+        use rust_oracle::statement::BindParam;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -4407,9 +4407,9 @@ mod collection_tests {
 
         // Create collection with values
         let mut coll = DbObject::collection("TEST_NUMBER_VARRAY");
-        coll.append(oracle_rs::row::Value::Integer(10));
-        coll.append(oracle_rs::row::Value::Integer(20));
-        coll.append(oracle_rs::row::Value::Integer(30));
+        coll.append(rust_oracle::row::Value::Integer(10));
+        coll.append(rust_oracle::row::Value::Integer(20));
+        coll.append(rust_oracle::row::Value::Integer(30));
 
         // Execute the procedure with full collection
         let result = conn.execute_plsql(
@@ -4438,8 +4438,8 @@ mod collection_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database and test types"]
     async fn test_varray_in_param() {
-        use oracle_rs::dbobject::DbObject;
-        use oracle_rs::statement::BindParam;
+        use rust_oracle::dbobject::DbObject;
+        use rust_oracle::statement::BindParam;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -4478,16 +4478,16 @@ mod collection_tests {
 
         // Create collection with values
         let mut coll = DbObject::collection("TEST_NUMBER_VARRAY");
-        coll.append(oracle_rs::row::Value::Integer(10));
-        coll.append(oracle_rs::row::Value::Integer(20));
-        coll.append(oracle_rs::row::Value::Integer(30));
+        coll.append(rust_oracle::row::Value::Integer(10));
+        coll.append(rust_oracle::row::Value::Integer(20));
+        coll.append(rust_oracle::row::Value::Integer(30));
 
         // Execute the procedure with IN and OUT parameters
         let result = conn.execute_plsql(
             "BEGIN test_varray_in_proc(:1, :2); END;",
             &[
                 BindParam::input_collection(&varray_type, coll),
-                BindParam::output(oracle_rs::constants::OracleType::Number, 22),
+                BindParam::output(rust_oracle::constants::OracleType::Number, 22),
             ],
         ).await;
 
@@ -4502,13 +4502,13 @@ mod collection_tests {
                 // Should be 10 + 20 + 30 = 60
                 // Note: NUMBER OUT params may come back as String due to fetch format
                 match sum {
-                    oracle_rs::row::Value::Integer(v) => {
+                    rust_oracle::row::Value::Integer(v) => {
                         assert_eq!(*v, 60, "Sum should be 60");
                     }
-                    oracle_rs::row::Value::Number(n) => {
+                    rust_oracle::row::Value::Number(n) => {
                         assert_eq!(n.to_i64().unwrap_or(0), 60, "Sum should be 60");
                     }
-                    oracle_rs::row::Value::String(s) => {
+                    rust_oracle::row::Value::String(s) => {
                         let v: i64 = s.trim().parse().expect("Should parse as integer");
                         assert_eq!(v, 60, "Sum should be 60");
                     }
@@ -4532,8 +4532,8 @@ mod collection_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database and test types"]
     async fn test_varray_inout_param() {
-        use oracle_rs::dbobject::DbObject;
-        use oracle_rs::statement::BindParam;
+        use rust_oracle::dbobject::DbObject;
+        use rust_oracle::statement::BindParam;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -4570,9 +4570,9 @@ mod collection_tests {
 
         // Create collection with values [1, 2, 3]
         let mut coll = DbObject::collection("TEST_NUMBER_VARRAY");
-        coll.append(oracle_rs::row::Value::Integer(1));
-        coll.append(oracle_rs::row::Value::Integer(2));
-        coll.append(oracle_rs::row::Value::Integer(3));
+        coll.append(rust_oracle::row::Value::Integer(1));
+        coll.append(rust_oracle::row::Value::Integer(2));
+        coll.append(rust_oracle::row::Value::Integer(3));
 
         // Execute the procedure
         let result = conn.execute_plsql(
@@ -4589,7 +4589,7 @@ mod collection_tests {
                 assert_eq!(plsql_result.out_values.len(), 1, "Should have 1 OUT value");
 
                 match &plsql_result.out_values[0] {
-                    oracle_rs::row::Value::Collection(coll) => {
+                    rust_oracle::row::Value::Collection(coll) => {
                         println!("Got collection with {} elements", coll.elements.len());
                         for (i, elem) in coll.elements.iter().enumerate() {
                             println!("  [{}] = {:?}", i, elem);
@@ -4624,8 +4624,8 @@ mod collection_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database and test types"]
     async fn test_nested_table_in_param() {
-        use oracle_rs::dbobject::DbObject;
-        use oracle_rs::statement::BindParam;
+        use rust_oracle::dbobject::DbObject;
+        use rust_oracle::statement::BindParam;
 
         let conn = connect().await.expect("Failed to connect");
 
@@ -4664,15 +4664,15 @@ mod collection_tests {
 
         // Create collection with values
         let mut coll = DbObject::collection("TEST_STRING_TABLE");
-        coll.append(oracle_rs::row::Value::String("Hello".to_string()));
-        coll.append(oracle_rs::row::Value::String("World".to_string()));
+        coll.append(rust_oracle::row::Value::String("Hello".to_string()));
+        coll.append(rust_oracle::row::Value::String("World".to_string()));
 
         // Execute the procedure
         let result = conn.execute_plsql(
             "BEGIN test_table_concat_proc(:1, :2); END;",
             &[
                 BindParam::input_collection(&table_type, coll),
-                BindParam::output(oracle_rs::constants::OracleType::Varchar, 200),
+                BindParam::output(rust_oracle::constants::OracleType::Varchar, 200),
             ],
         ).await;
 
@@ -4682,7 +4682,7 @@ mod collection_tests {
                 assert_eq!(plsql_result.out_values.len(), 1, "Should have 1 OUT value");
 
                 match &plsql_result.out_values[0] {
-                    oracle_rs::row::Value::String(s) => {
+                    rust_oracle::row::Value::String(s) => {
                         println!("Result: {}", s);
                         assert_eq!(s, "Hello, World", "Should be concatenated string");
                     }
@@ -4743,7 +4743,7 @@ mod statement_cache_reuse_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_same_dml_twice_succeeds() {
-        use oracle_rs::Value;
+        use rust_oracle::Value;
         let conn = connect().await.expect("Failed to connect");
 
         conn.execute("CREATE TABLE test_cache_dml (id NUMBER, name VARCHAR2(50))", &[])
@@ -4777,7 +4777,7 @@ mod statement_cache_reuse_tests {
     #[tokio::test]
     #[ignore = "requires Oracle database"]
     async fn test_cached_query_with_bind_params_returns_correct_values() {
-        use oracle_rs::Value;
+        use rust_oracle::Value;
         let conn = connect().await.expect("Failed to connect");
 
         let sql = "SELECT emp_id, first_name, salary FROM test_employees WHERE dept_id = :1 ORDER BY emp_id";
@@ -4804,7 +4804,7 @@ mod statement_cache_reuse_tests {
 
 mod json_nesting_tests {
     use super::*;
-    use oracle_rs::Value;
+    use rust_oracle::Value;
 
     /// Test OSON decoding with nested JSON structures: objects within arrays within objects
     #[tokio::test]

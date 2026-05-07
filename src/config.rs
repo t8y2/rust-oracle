@@ -71,7 +71,7 @@ pub enum TlsMode {
 /// ## Basic connection
 ///
 /// ```rust
-/// use oracle_rs::Config;
+/// use rust_oracle::Config;
 ///
 /// let config = Config::new("localhost", 1521, "FREEPDB1", "user", "password");
 /// ```
@@ -79,7 +79,7 @@ pub enum TlsMode {
 /// ## TLS connection with system certificates
 ///
 /// ```rust,no_run
-/// use oracle_rs::Config;
+/// use rust_oracle::Config;
 ///
 /// let config = Config::new("hostname", 2484, "service", "user", "password")
 ///     .with_tls()
@@ -89,7 +89,7 @@ pub enum TlsMode {
 /// ## TLS connection with Oracle wallet
 ///
 /// ```rust,ignore
-/// use oracle_rs::Config;
+/// use rust_oracle::Config;
 ///
 /// let config = Config::new("hostname", 2484, "service", "user", "password")
 ///     .with_wallet("/path/to/wallet", Some("wallet_password"))
@@ -99,7 +99,7 @@ pub enum TlsMode {
 /// ## With custom options
 ///
 /// ```rust
-/// use oracle_rs::Config;
+/// use rust_oracle::Config;
 /// use std::time::Duration;
 ///
 /// let config = Config::new("localhost", 1521, "FREEPDB1", "user", "password")
@@ -213,7 +213,7 @@ impl Config {
     /// # Example
     ///
     /// ```rust
-    /// use oracle_rs::Config;
+    /// use rust_oracle::Config;
     ///
     /// let config = Config::new("hostname", 2484, "service", "user", "password")
     ///     .with_tls()
@@ -242,7 +242,7 @@ impl Config {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use oracle_rs::Config;
+    /// use rust_oracle::Config;
     ///
     /// let config = Config::new("hostname", 2484, "service", "user", "password")
     ///     .with_wallet("/path/to/wallet", Some("wallet_password"))
@@ -276,7 +276,7 @@ impl Config {
     /// # Example
     ///
     /// ```rust
-    /// use oracle_rs::Config;
+    /// use rust_oracle::Config;
     ///
     /// let config = Config::new("hostname", 1521, "service", "user", "password")
     ///     .with_drcp("my_app", "self");
@@ -297,7 +297,7 @@ impl Config {
     /// # Example
     ///
     /// ```rust
-    /// use oracle_rs::Config;
+    /// use rust_oracle::Config;
     ///
     /// let config = Config::new("localhost", 1521, "FREEPDB1", "user", "password")
     ///     .with_statement_cache_size(100);

@@ -4,13 +4,13 @@
 //! after the CONNECT → ACCEPT handshake. This phase establishes the TTC
 //! (Two-Task Common) capabilities between client and server.
 
-use oracle_rs::capabilities::Capabilities;
-use oracle_rs::constants::{
+use rust_oracle::capabilities::Capabilities;
+use rust_oracle::constants::{
     accept_flags, ccap_index, ccap_value, charset, rcap_index, rcap_value, service_options,
     MessageType, PacketType, PACKET_HEADER_SIZE,
 };
-use oracle_rs::messages::{DataTypesMessage, ProtocolMessage};
-use oracle_rs::packet::PacketHeader;
+use rust_oracle::messages::{DataTypesMessage, ProtocolMessage};
+use rust_oracle::packet::PacketHeader;
 
 /// Helper to build a mock Protocol response payload
 fn build_protocol_response(

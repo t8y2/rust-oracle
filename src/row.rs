@@ -27,7 +27,7 @@ use crate::types::{
 /// # Example
 ///
 /// ```rust,no_run
-/// use oracle_rs::Value;
+/// use rust_oracle::Value;
 ///
 /// fn process_value(value: &Value) {
 ///     match value {
@@ -45,7 +45,7 @@ use crate::types::{
 /// Values can be converted to Rust types using the accessor methods:
 ///
 /// ```rust
-/// use oracle_rs::Value;
+/// use rust_oracle::Value;
 ///
 /// let value = Value::Integer(42);
 /// let num: i64 = value.as_i64().unwrap();
@@ -314,9 +314,9 @@ impl std::fmt::Display for Value {
 /// # Example
 ///
 /// ```rust,no_run
-/// use oracle_rs::{Connection, Row};
+/// use rust_oracle::{Connection, Row};
 ///
-/// # async fn example(conn: Connection) -> oracle_rs::Result<()> {
+/// # async fn example(conn: Connection) -> rust_oracle::Result<()> {
 /// let result = conn.query("SELECT id, name, salary FROM employees", &[]).await?;
 ///
 /// for row in &result.rows {

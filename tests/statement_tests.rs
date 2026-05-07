@@ -3,12 +3,12 @@
 //! These tests verify the statement parsing, execute message building,
 //! describe info parsing, and fetch message building.
 
-use oracle_rs::constants::{
+use rust_oracle::constants::{
     FunctionCode, MessageType, OracleType, PacketType, PACKET_HEADER_SIZE,
 };
-use oracle_rs::messages::{ExecuteMessage, ExecuteOptions, FetchMessage};
-use oracle_rs::statement::{BindInfo, ColumnInfo, Statement, StatementType};
-use oracle_rs::Capabilities;
+use rust_oracle::messages::{ExecuteMessage, ExecuteOptions, FetchMessage};
+use rust_oracle::statement::{BindInfo, ColumnInfo, Statement, StatementType};
+use rust_oracle::Capabilities;
 
 mod statement_parsing_tests {
     use super::*;

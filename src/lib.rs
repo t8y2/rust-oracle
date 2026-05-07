@@ -19,10 +19,10 @@
 //! ## Quick Start
 //!
 //! ```rust,no_run
-//! use oracle_rs::{Config, Connection};
+//! use rust_oracle::{Config, Connection};
 //!
 //! #[tokio::main]
-//! async fn main() -> oracle_rs::Result<()> {
+//! async fn main() -> rust_oracle::Result<()> {
 //!     // Connect to Oracle
 //!     let config = Config::new("localhost", 1521, "FREEPDB1", "user", "password");
 //!     let conn = Connection::connect_with_config(config).await?;
@@ -45,9 +45,9 @@
 //! ### Basic Connection
 //!
 //! ```rust,no_run
-//! use oracle_rs::{Config, Connection};
+//! use rust_oracle::{Config, Connection};
 //!
-//! # async fn example() -> oracle_rs::Result<()> {
+//! # async fn example() -> rust_oracle::Result<()> {
 //! let config = Config::new("hostname", 1521, "service_name", "username", "password");
 //! let conn = Connection::connect_with_config(config).await?;
 //! # Ok(())
@@ -57,9 +57,9 @@
 //! ### TLS/SSL Connection
 //!
 //! ```rust,no_run
-//! use oracle_rs::{Config, Connection};
+//! use rust_oracle::{Config, Connection};
 //!
-//! # async fn example() -> oracle_rs::Result<()> {
+//! # async fn example() -> rust_oracle::Result<()> {
 //! let config = Config::new("hostname", 2484, "service_name", "username", "password")
 //!     .with_tls()?;
 //!
@@ -71,9 +71,9 @@
 //! ### Oracle Wallet
 //!
 //! ```rust,no_run
-//! use oracle_rs::{Config, Connection};
+//! use rust_oracle::{Config, Connection};
 //!
-//! # async fn example() -> oracle_rs::Result<()> {
+//! # async fn example() -> rust_oracle::Result<()> {
 //! let config = Config::new("hostname", 2484, "service_name", "username", "password")
 //!     .with_wallet("/path/to/wallet", Some("wallet_password"))?;
 //!
@@ -87,9 +87,9 @@
 //! ### SELECT Queries
 //!
 //! ```rust,no_run
-//! use oracle_rs::{Connection, Value};
+//! use rust_oracle::{Connection, Value};
 //!
-//! # async fn example(conn: Connection) -> oracle_rs::Result<()> {
+//! # async fn example(conn: Connection) -> rust_oracle::Result<()> {
 //! // Simple query
 //! let result = conn.query("SELECT * FROM employees", &[]).await?;
 //!
@@ -111,9 +111,9 @@
 //! ### DML Operations
 //!
 //! ```rust,no_run
-//! use oracle_rs::{Connection, Value};
+//! use rust_oracle::{Connection, Value};
 //!
-//! # async fn example(conn: Connection) -> oracle_rs::Result<()> {
+//! # async fn example(conn: Connection) -> rust_oracle::Result<()> {
 //! // INSERT
 //! let result = conn.execute(
 //!     "INSERT INTO users (id, name) VALUES (:1, :2)",
@@ -130,9 +130,9 @@
 //! ### Batch Operations
 //!
 //! ```rust,no_run
-//! use oracle_rs::{Connection, BatchBuilder, Value};
+//! use rust_oracle::{Connection, BatchBuilder, Value};
 //!
-//! # async fn example(conn: Connection) -> oracle_rs::Result<()> {
+//! # async fn example(conn: Connection) -> rust_oracle::Result<()> {
 //! let batch = BatchBuilder::new("INSERT INTO users (id, name) VALUES (:1, :2)")
 //!     .add_row(vec![1.into(), "Alice".into()])
 //!     .add_row(vec![2.into(), "Bob".into()])
@@ -148,9 +148,9 @@
 //! ## Transactions
 //!
 //! ```rust,no_run
-//! use oracle_rs::{Connection, Value};
+//! use rust_oracle::{Connection, Value};
 //!
-//! # async fn example(conn: Connection) -> oracle_rs::Result<()> {
+//! # async fn example(conn: Connection) -> rust_oracle::Result<()> {
 //! // Auto-commit is off by default
 //! conn.execute("INSERT INTO accounts (id, balance) VALUES (:1, :2)", &[1.into(), 100.0.into()]).await?;
 //! conn.execute("UPDATE accounts SET balance = balance - :1 WHERE id = :2", &[50.0.into(), 1.into()]).await?;
