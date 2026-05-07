@@ -270,8 +270,8 @@ pub mod version {
     pub const DESIRED: u16 = 319;
     /// Minimum protocol version we support
     pub const MINIMUM: u16 = 300;
-    /// Minimum accepted version (Oracle 12.1)
-    pub const MIN_ACCEPTED: u16 = 315;
+    /// Minimum accepted version (Oracle 11g R2)
+    pub const MIN_ACCEPTED: u16 = 314;
     /// Minimum version supporting large SDU
     pub const MIN_LARGE_SDU: u16 = 315;
     /// Minimum version supporting OOB check
