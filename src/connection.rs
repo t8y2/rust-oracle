@@ -433,7 +433,7 @@ impl ConnectionInner {
         let mut is_first_packet = true;
 
         loop {
-            let wait_ms = if is_first_packet { 10_000 } else { 500 };
+            let wait_ms = if is_first_packet { 10_000 } else { 5 };
             let packet = match timeout(Duration::from_millis(wait_ms), self.receive()).await {
                 Ok(Ok(pkt)) => pkt,
                 Ok(Err(e)) => return Err(e),
