@@ -427,22 +427,21 @@ impl ConnectionInner {
     /// Returns the combined payload of all packets (excluding headers).
     async fn receive_response(&mut self) -> Result<bytes::Bytes> {
         use crate::constants::{data_flags, MessageType};
-        use tokio::time::{timeout, Duration};
 
+        let needs_timeout = !self.capabilities.supports_end_of_response;
         let mut accumulated_payload = Vec::new();
         let mut is_first_packet = true;
 
         loop {
-            let wait_ms = if is_first_packet { 10_000 } else { 5 };
-            let packet = match timeout(Duration::from_millis(wait_ms), self.receive()).await {
-                Ok(Ok(pkt)) => pkt,
-                Ok(Err(e)) => return Err(e),
-                Err(_) => {
-                    if is_first_packet {
-                        return Err(Error::Protocol("Timed out waiting for response from Oracle".to_string()));
-                    }
-                    break;
+            let packet = if !is_first_packet && needs_timeout {
+                use tokio::time::{timeout, Duration};
+                match timeout(Duration::from_millis(5), self.receive()).await {
+                    Ok(Ok(pkt)) => pkt,
+                    Ok(Err(e)) => return Err(e),
+                    Err(_) => break,
                 }
+            } else {
+                self.receive().await?
             };
 
             if packet.len() < PACKET_HEADER_SIZE {
