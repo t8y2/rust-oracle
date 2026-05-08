@@ -417,18 +417,19 @@ impl ConnectionInner {
     /// data spanning multiple TNS packets.
     ///
     /// Returns the combined payload of all packets (excluding headers).
+    /// Receive a single response packet or accumulated multi-packet response.
+    ///
+    /// For Oracle with END_OF_RESPONSE support: accumulates packets until the
+    /// flag is set. For older Oracle (11g): returns the first packet only —
+    /// callers must use `receive_more_data()` if parsing hits BufferUnderflow.
     async fn receive_response(&mut self) -> Result<bytes::Bytes> {
         use crate::constants::{data_flags, MessageType};
 
-        let needs_timeout = !self.capabilities.supports_end_of_response;
-
-        // Fast path: read first packet
         let first_packet = self.receive().await?;
         if first_packet.len() < PACKET_HEADER_SIZE {
             return Err(Error::Protocol("Packet too small".to_string()));
         }
 
-        // Non-DATA (MARKER etc) — return as-is
         if first_packet[4] != PacketType::Data as u8 {
             return Ok(first_packet);
         }
@@ -443,59 +444,79 @@ impl ConnectionInner {
             || (flags & data_flags::EOF) != 0
             || (payload.len() == 3 && payload[2] == MessageType::EndOfResponse as u8);
 
-        // Single-packet response (most common) — zero-copy return
-        if has_end || !needs_timeout {
+        if has_end {
             return Ok(first_packet);
         }
 
-        // Multi-packet path (Oracle 11g without END_OF_RESPONSE)
-        let mut accumulated_payload = Vec::with_capacity(payload.len() + 256);
-        accumulated_payload.extend_from_slice(payload);
+        // No end flag — accumulate remaining packets (for servers WITH end-of-response)
+        if self.capabilities.supports_end_of_response {
+            let mut accumulated = Vec::with_capacity(payload.len() + 512);
+            accumulated.extend_from_slice(payload);
 
-        loop {
-            // Check if accumulated data ends with a terminal message
-            if response_looks_complete(&accumulated_payload) {
-                break;
-            }
-
-            // Short timeout fallback — if tail scan can't detect completion
-            let packet = {
-                use tokio::time::{timeout, Duration};
-                match timeout(Duration::from_millis(2), self.receive()).await {
-                    Ok(Ok(pkt)) => pkt,
-                    Ok(Err(e)) => return Err(e),
-                    Err(_) => break,
+            loop {
+                let packet = self.receive().await?;
+                if packet.len() < PACKET_HEADER_SIZE || packet[4] != PacketType::Data as u8 {
+                    break;
                 }
-            };
+                let p = &packet[PACKET_HEADER_SIZE..];
+                if p.len() < 2 { break; }
+                accumulated.extend_from_slice(&p[2..]);
 
-            if packet.len() < PACKET_HEADER_SIZE || packet[4] != PacketType::Data as u8 {
-                break;
+                let pf = u16::from_be_bytes([p[0], p[1]]);
+                if (pf & data_flags::END_OF_RESPONSE) != 0 || (pf & data_flags::EOF) != 0 {
+                    break;
+                }
             }
 
-            let p = &packet[PACKET_HEADER_SIZE..];
-            if p.len() >= 2 {
-                accumulated_payload.extend_from_slice(&p[2..]);
+            let total_len = PACKET_HEADER_SIZE + accumulated.len();
+            let mut result = Vec::with_capacity(total_len);
+            if self.large_sdu {
+                result.extend_from_slice(&(total_len as u32).to_be_bytes());
+            } else {
+                result.extend_from_slice(&(total_len as u16).to_be_bytes());
+                result.extend_from_slice(&[0, 0]);
             }
+            result.push(PacketType::Data as u8);
+            result.push(0);
+            result.extend_from_slice(&[0, 0]);
+            result.extend_from_slice(&accumulated);
+            return Ok(bytes::Bytes::from(result));
         }
 
-        // Build synthetic packet
-        let total_len = PACKET_HEADER_SIZE + accumulated_payload.len();
-        let mut result = Vec::with_capacity(total_len);
+        // Oracle 11g — return single packet, caller will request more if needed
+        Ok(first_packet)
+    }
 
-        // Build header
+    /// Read one more DATA packet and append its payload to the existing response.
+    /// Returns the new combined response bytes, or None if no more data.
+    async fn receive_more_data(&mut self, existing: &bytes::Bytes) -> Result<bytes::Bytes> {
+        let packet = self.receive().await?;
+        if packet.len() < PACKET_HEADER_SIZE || packet[4] != PacketType::Data as u8 {
+            return Err(Error::Protocol("Expected DATA packet for continuation".to_string()));
+        }
+        let p = &packet[PACKET_HEADER_SIZE..];
+        if p.len() < 2 {
+            return Err(Error::Protocol("DATA packet too small".to_string()));
+        }
+
+        // Build combined: existing payload + new payload (skip new data flags)
+        let existing_payload = &existing[PACKET_HEADER_SIZE..];
+        let mut combined = Vec::with_capacity(existing_payload.len() + p.len());
+        combined.extend_from_slice(existing_payload);
+        combined.extend_from_slice(&p[2..]);
+
+        let total_len = PACKET_HEADER_SIZE + combined.len();
+        let mut result = Vec::with_capacity(total_len);
         if self.large_sdu {
             result.extend_from_slice(&(total_len as u32).to_be_bytes());
         } else {
             result.extend_from_slice(&(total_len as u16).to_be_bytes());
-            result.extend_from_slice(&[0, 0]); // Checksum
+            result.extend_from_slice(&[0, 0]);
         }
         result.push(PacketType::Data as u8);
-        result.push(0); // Flags
-        result.extend_from_slice(&[0, 0]); // Header checksum
-
-        // Add combined payload
-        result.extend_from_slice(&accumulated_payload);
-
+        result.push(0);
+        result.extend_from_slice(&[0, 0]);
+        result.extend_from_slice(&combined);
         Ok(bytes::Bytes::from(result))
     }
 
@@ -2377,7 +2398,7 @@ impl Connection {
 
     /// Internal: Execute a query statement with optional bind parameters
     async fn execute_query_with_params(&self, statement: &Statement, params: &[Value]) -> Result<QueryResult> {
-        let prefetch_rows = estimate_prefetch(statement.sql());
+        let prefetch_rows = 100;
 
         let options = ExecuteOptions::for_query(prefetch_rows);
         let mut execute_msg = ExecuteMessage::new(statement, options);
@@ -2394,8 +2415,8 @@ impl Connection {
         let request = execute_msg.build_request_with_sdu(&inner.capabilities, large_sdu)?;
         inner.send(&request).await?;
 
-        // Receive and parse response
-        let response = inner.receive_response().await?;
+        // Receive and parse response — retry with more data on BufferUnderflow
+        let mut response = inner.receive_response().await?;
 
         // Check for MARKER packet (indicates error - requires reset protocol)
         let packet_type = response[4];
@@ -2405,9 +2426,17 @@ impl Connection {
             return self.parse_error_response(payload);
         }
 
-        // Parse the response to extract columns and rows
-        let payload = &response[PACKET_HEADER_SIZE..];
-        let mut result = self.parse_query_response(payload, &inner.capabilities)?;
+        // Parse with retry: if BufferUnderflow, read more packets and retry
+        let mut result = loop {
+            let payload = &response[PACKET_HEADER_SIZE..];
+            match self.parse_query_response(payload, &inner.capabilities) {
+                Ok(r) => break r,
+                Err(Error::BufferUnderflow { .. }) => {
+                    response = inner.receive_more_data(&response).await?;
+                }
+                Err(e) => return Err(e),
+            }
+        };
 
         // Check if any columns are LOB types that require defines
         let has_lob_columns = result.columns.iter().any(|col| col.is_lob());
@@ -2585,9 +2614,17 @@ impl Connection {
             }
         }
 
-        // Parse the response to extract rows affected (or error)
-        let payload = &response[PACKET_HEADER_SIZE..];
-        self.parse_dml_response(payload, ttc_fv)
+        // Parse with retry for multi-packet responses
+        loop {
+            let payload = &response[PACKET_HEADER_SIZE..];
+            match self.parse_dml_response(payload, ttc_fv) {
+                Ok(r) => return Ok(r),
+                Err(Error::BufferUnderflow { .. }) => {
+                    response = inner.receive_more_data(&response).await?;
+                }
+                Err(e) => return Err(e),
+            }
+        }
     }
 
     /// Parse query response to extract columns and rows
@@ -5096,61 +5133,6 @@ impl Drop for Connection {
 // =============================================================================
 // Helper functions for get_type()
 // =============================================================================
-
-/// Estimate optimal prefetch row count based on SQL content.
-fn estimate_prefetch(sql: &str) -> u32 {
-    let upper: String = sql.chars().take(200).flat_map(|c| c.to_uppercase()).collect();
-    // Metadata queries — typically few rows, prefetch all in one round trip
-    if upper.contains("ALL_TABLES")
-        || upper.contains("ALL_OBJECTS")
-        || upper.contains("ALL_VIEWS")
-        || upper.contains("ALL_TAB_COLUMNS")
-        || upper.contains("ALL_CONS_COLUMNS")
-        || upper.contains("ALL_CONSTRAINTS")
-        || upper.contains("ALL_INDEXES")
-        || upper.contains("ALL_IND_COLUMNS")
-        || upper.contains("ALL_TRIGGERS")
-        || upper.contains("ALL_USERS")
-        || upper.contains("USER_TABLES")
-        || upper.contains("USER_TAB_COLUMNS")
-        || upper.contains("DBA_")
-    {
-        return 500;
-    }
-    // ROWNUM-limited queries — match the limit
-    if let Some(pos) = upper.find("ROWNUM") {
-        if let Some(le_pos) = upper[pos..].find("<=") {
-            let after = upper[pos + le_pos.wrapping_add(2)..].trim_start();
-            if let Some(n) = after.split_whitespace().next().and_then(|s| s.trim_matches(')').parse::<u32>().ok()) {
-                return n.min(1000);
-            }
-        }
-    }
-    100
-}
-
-/// Check if accumulated response data (after data flags) looks like a complete
-/// TTC response. Oracle 11g terminates query responses with an Error(4) message
-/// whose text ends with `\n`, or with zero-valued Status fields.
-fn response_looks_complete(payload: &[u8]) -> bool {
-    if payload.len() < 5 {
-        return false;
-    }
-    let msg_data = &payload[2..]; // skip data flags
-    let last = *msg_data.last().unwrap_or(&0);
-    // Error message text always ends with \n (0x0a)
-    if last == 0x0a {
-        return true;
-    }
-    // Successful DML with no error message ends with Status(09 00 00) or similar
-    if msg_data.len() >= 3 {
-        let n = msg_data.len();
-        if msg_data[n - 3] == 0x09 && msg_data[n - 2] == 0x00 && msg_data[n - 1] == 0x00 {
-            return true;
-        }
-    }
-    false
-}
 
 /// Parse a type name into (schema, name) components
 ///
