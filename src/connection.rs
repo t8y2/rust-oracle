@@ -2394,6 +2394,9 @@ impl Connection {
         let seq_num = inner.next_sequence_number();
         execute_msg.set_sequence_number(seq_num);
         let request = execute_msg.build_request_with_sdu(&inner.capabilities, large_sdu)?;
+        eprintln!("[rust-oracle] execute_query: sending req len={} seq={} ttc_fv={} large_sdu={} sql={:?}",
+            request.len(), seq_num, inner.capabilities.ttc_field_version, large_sdu,
+            &statement.sql()[..statement.sql().len().min(60)]);
         inner.send(&request).await?;
 
         // Receive and parse response
