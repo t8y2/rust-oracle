@@ -3421,98 +3421,12 @@ impl Connection {
     /// Parse error info message and extract cursor_id
     /// Format per Python's _process_error_info in base.pyx
     fn parse_error_info(&self, buf: &mut ReadBuffer) -> Result<(u32, Option<String>, u16)> {
-        // End of call status
-        let _call_status = buf.read_ub4()?;
-        // End to end seq#
-        buf.skip_ub2()?;
-        // Current row number
-        buf.skip_ub4()?;
-        // Error number (short form)
-        buf.skip_ub2()?;
-        // Array elem error
-        buf.skip_ub2()?;
-        // Array elem error
-        buf.skip_ub2()?;
-        // Cursor ID
-        let cursor_id = buf.read_ub2()?;
-        // Error position
-        let _error_pos = buf.read_sb2()?;
-        // SQL type (19c and earlier)
-        buf.skip_ub1()?;
-        // Fatal?
-        buf.skip_ub1()?;
-        // Flags
-        buf.skip_ub1()?;
-        // User cursor options
-        buf.skip_ub1()?;
-        // UPI parameter
-        buf.skip_ub1()?;
-        // Flags (second)
-        buf.skip_ub1()?;
-        // Rowid (rba, partition_id, skip 1, block_num, slot_num)
-        buf.skip_ub4()?; // rba
-        buf.skip_ub2()?; // partition_id
-        buf.skip_ub1()?; // skip
-        buf.skip_ub4()?; // block_num
-        buf.skip_ub2()?; // slot_num
-        // OS error
-        buf.skip_ub4()?;
-        // Statement number
-        buf.skip_ub1()?;
-        // Call number
-        buf.skip_ub1()?;
-        // Padding
-        buf.skip_ub2()?;
-        // Success iters
-        buf.skip_ub4()?;
-        // oerrdd (logical rowid)
-        let oerrdd_len = buf.read_ub4()?;
-        if oerrdd_len > 0 {
-            buf.skip_raw_bytes_chunked()?;
-        }
-
-        // Batch error codes array
-        let num_batch_errors = buf.read_ub2()?;
-        if num_batch_errors > 0 {
-            buf.skip_ub1()?;  // first byte
-            for _ in 0..num_batch_errors {
-                buf.skip_ub2()?;  // error code
-            }
-        }
-
-        // Batch error row offset array
-        let num_offsets = buf.read_ub4()?;
-        if num_offsets > 0 {
-            buf.skip_ub1()?;  // first byte
-            for _ in 0..num_offsets {
-                buf.skip_ub4()?;  // offset
-            }
-        }
-
-        // Batch error messages array
-        let num_batch_msgs = buf.read_ub2()?;
-        if num_batch_msgs > 0 {
-            buf.skip_ub1()?;  // packed size
-            for _ in 0..num_batch_msgs {
-                buf.skip_ub2()?;  // chunk length
-                buf.read_string_with_length()?;  // message
-                buf.skip(2)?;  // end marker
-            }
-        }
-
-        // Extended error number (UB4)
-        let error_code = buf.read_ub4()?;
-        // Row count (UB8)
-        let _row_count = buf.read_ub8()?;
-
-        // Error message
-        let error_msg = if error_code != 0 {
-            buf.read_string_with_length()?.map(|s| s.trim().to_string())
-        } else {
-            None
-        };
-
-        Ok((error_code, error_msg, cursor_id))
+        // Delegate to the version-aware parser, using a safe default (oldest supported)
+        // This function is called from contexts where capabilities aren't available,
+        // so we use FIELD_VERSION_11_2 to ensure the most compatible parsing.
+        let (code, msg, cid, _row_count) =
+            self.parse_error_info_with_rowcount(buf, crate::constants::ccap_value::FIELD_VERSION_11_2)?;
+        Ok((code, msg, cid))
     }
 
     /// Parse error response packet (received after marker reset)
@@ -3531,86 +3445,11 @@ impl Connection {
 
         // Check for error message type (4)
         if msg_type == MessageType::Error as u8 {
-            // Parse error info per Python's _process_error_info
-            let _call_status = buf.read_ub4()?;  // end of call status
-            buf.skip_ub2()?;  // end to end seq#
-            buf.skip_ub4()?;  // current row number
-            buf.skip_ub2()?;  // error number (short form)
-            buf.skip_ub2()?;  // array elem error
-            buf.skip_ub2()?;  // array elem error
-            let _cursor_id = buf.read_ub2()?;  // cursor id
-            let _error_pos = buf.read_sb2()?;  // error position
-            buf.skip_ub1()?;  // sql type (19c and earlier)
-            buf.skip_ub1()?;  // fatal?
-            buf.skip_ub1()?;  // flags
-            buf.skip_ub1()?;  // user cursor options
-            buf.skip_ub1()?;  // UPI parameter
-            buf.skip_ub1()?;  // flags
-
-            // Rowid (rba, partition_id, skip 1, block_num, slot_num)
-            buf.skip_ub4()?; // rba
-            buf.skip_ub2()?; // partition_id
-            buf.skip_ub1()?; // skip
-            buf.skip_ub4()?; // block_num
-            buf.skip_ub2()?; // slot_num
-
-            buf.skip_ub4()?;  // OS error
-            buf.skip_ub1()?;  // statement number
-            buf.skip_ub1()?;  // call number
-            buf.skip_ub2()?;  // padding
-            buf.skip_ub4()?;  // success iters
-
-            // oerrdd (logical rowid)
-            let oerrdd_len = buf.read_ub4()?;
-            if oerrdd_len > 0 {
-                buf.skip_raw_bytes_chunked()?;
-            }
-
-            // batch error codes array
-            let num_batch_errors = buf.read_ub2()?;
-            if num_batch_errors > 0 {
-                // Skip batch error data - we don't process it for now
-                buf.skip_ub1()?;  // first byte
-                for _ in 0..num_batch_errors {
-                    buf.skip_ub2()?;  // error code
-                }
-            }
-
-            // batch error row offset array
-            let num_offsets = buf.read_ub4()?;
-            if num_offsets > 0 {
-                buf.skip_ub1()?;  // first byte
-                for _ in 0..num_offsets {
-                    buf.skip_ub4()?;  // offset
-                }
-            }
-
-            // batch error messages array
-            let num_batch_msgs = buf.read_ub2()?;
-            if num_batch_msgs > 0 {
-                // Skip batch error messages
-                buf.skip_ub1()?;  // packed size
-                for _ in 0..num_batch_msgs {
-                    buf.skip_ub2()?;  // chunk length
-                    buf.read_string_with_length()?;  // message
-                    buf.skip(2)?;  // end marker
-                }
-            }
-
-            // Extended error number (UB4)
-            let error_num = buf.read_ub4()?;
-            let _row_count = buf.read_ub8()?;  // row number (extended)
-
-            // Read error message
-            let error_msg = if error_num != 0 {
-                buf.read_string_with_length()?.map(|s| s.trim().to_string())
-            } else {
-                None
-            };
+            let (error_code, error_msg, _cursor_id) = self.parse_error_info(&mut buf)?;
 
             return Err(Error::OracleError {
-                code: error_num,
-                message: error_msg.unwrap_or_else(|| format!("ORA-{:05}", error_num)),
+                code: error_code,
+                message: error_msg.unwrap_or_else(|| format!("ORA-{:05}", error_code)),
             });
         }
 
