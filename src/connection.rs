@@ -1331,6 +1331,12 @@ impl Connection {
             }
         }
 
+        // Drain any stale data left in TCP buffer to prevent cross-query pollution
+        {
+            let mut inner = self.inner.lock().await;
+            inner.drain_stale_packets().await;
+        }
+
         // For cached statements, restore columns if Oracle didn't send them
         if let (Ok(ref mut query_result), Some(columns)) = (&mut result, cached_columns) {
             if query_result.columns.is_empty() && !columns.is_empty() {
@@ -2464,6 +2470,9 @@ impl Connection {
             }
         };
 
+        // Drain stale data after successful parse
+        inner.drain_stale_packets().await;
+
         // Check if any columns are LOB types that require defines
         let has_lob_columns = result.columns.iter().any(|col| col.is_lob());
 
@@ -2641,16 +2650,18 @@ impl Connection {
         }
 
         // Parse with retry for multi-packet responses
-        loop {
+        let dml_result = loop {
             let payload = &response[PACKET_HEADER_SIZE..];
             match self.parse_dml_response(payload, ttc_fv) {
-                Ok(r) => return Ok(r),
+                Ok(r) => break r,
                 Err(Error::BufferUnderflow { .. }) => {
                     response = inner.receive_more_data(&response).await?;
                 }
                 Err(e) => return Err(e),
             }
-        }
+        };
+        inner.drain_stale_packets().await;
+        Ok(dml_result)
     }
 
     /// Parse query response to extract columns and rows
