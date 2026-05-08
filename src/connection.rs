@@ -432,7 +432,9 @@ impl ConnectionInner {
         let mut is_first_packet = true;
 
         loop {
+            eprintln!("[rust-oracle] receive_response: waiting for packet...");
             let packet = self.receive().await?;
+            eprintln!("[rust-oracle] receive_response: got pkt len={} type={:#04x}", packet.len(), if packet.len() > 4 { packet[4] } else { 0 });
 
             if packet.len() < PACKET_HEADER_SIZE {
                 return Err(Error::Protocol("Packet too small".to_string()));
@@ -668,19 +670,14 @@ impl ConnectionInner {
         }
 
         eprintln!("[rust-oracle] handle_marker_reset: reading error packet after reset...");
-        // Otherwise read the error packet after reset
-        // Note: Some Oracle versions (like Oracle Free) may close the connection after reset
-        // instead of sending an error packet
         loop {
             match self.receive().await {
                 Ok(packet) => {
-                    let packet_type = packet[4];
-
-                    if packet_type != PacketType::Marker as u8 {
-                        // This should be the error data packet
+                    let ptype = packet[4];
+                    eprintln!("[rust-oracle] handle_marker_reset: post-reset pkt len={} type={:#04x}", packet.len(), ptype);
+                    if ptype != PacketType::Marker as u8 {
                         return Ok(packet);
                     }
-                    // Skip additional marker packets
                 }
                 Err(_) => {
                     // Connection closed after reset - Oracle Free and some versions
