@@ -433,14 +433,15 @@ impl ConnectionInner {
         let mut is_first_packet = true;
 
         loop {
-            // First packet: block indefinitely. Subsequent: use timeout.
-            let packet = if is_first_packet {
-                self.receive().await?
-            } else {
-                match timeout(Duration::from_millis(500), self.receive()).await {
-                    Ok(Ok(pkt)) => pkt,
-                    Ok(Err(e)) => return Err(e),
-                    Err(_) => break, // timeout — no more packets
+            let wait_ms = if is_first_packet { 10_000 } else { 500 };
+            let packet = match timeout(Duration::from_millis(wait_ms), self.receive()).await {
+                Ok(Ok(pkt)) => pkt,
+                Ok(Err(e)) => return Err(e),
+                Err(_) => {
+                    if is_first_packet {
+                        return Err(Error::Protocol("Timed out waiting for response from Oracle".to_string()));
+                    }
+                    break;
                 }
             };
 
