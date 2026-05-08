@@ -435,7 +435,7 @@ impl<'a> ExecuteMessage<'a> {
 
         // Write SQL if parsing
         if stmt.cursor_id() == 0 || stmt.is_ddl() {
-            buf.write_bytes_with_length(Some(stmt.sql_bytes()))?;
+            buf.write_bytes_with_length_ext(Some(stmt.sql_bytes()), caps.use_big_clr_chunks)?;
             buf.write_ub4(1)?; // al8i4[0] parse
         } else {
             buf.write_ub4(0)?; // al8i4[0] parse

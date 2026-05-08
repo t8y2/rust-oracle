@@ -28,6 +28,8 @@ pub struct Capabilities {
     pub runtime_caps: Vec<u8>,
     /// TTC field version
     pub ttc_field_version: u8,
+    /// Whether server supports big CLR chunks (ub4 length + 32K chunks)
+    pub use_big_clr_chunks: bool,
     /// Negotiated SDU size
     pub sdu: u32,
     /// Maximum string size (4000 or 32767)
@@ -63,6 +65,7 @@ impl Capabilities {
             compile_caps: vec![0; ccap_index::MAX],
             runtime_caps: vec![0; rcap_index::MAX],
             ttc_field_version: ccap_value::FIELD_VERSION_MAX,
+            use_big_clr_chunks: true,
             sdu: 8192,
             max_string_size: 4000,
             supports_fast_auth: false,
@@ -191,6 +194,11 @@ impl Capabilities {
             if (server_caps[ccap_index::TTC4] & ccap_value::EXPLICIT_BOUNDARY) != 0 {
                 self.supports_request_boundaries = true;
             }
+        }
+
+        // Check for big CLR chunk support (compile caps[37] bit 5)
+        if server_caps.len() > ccap_index::TTC3 {
+            self.use_big_clr_chunks = (server_caps[ccap_index::TTC3] & 0x20) != 0;
         }
 
         // Disable end of response if field version is too old

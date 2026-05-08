@@ -268,6 +268,10 @@ impl WriteBuffer {
     /// - For each chunk up to 32767 bytes: write ub4(chunk_len) + raw bytes
     /// - Write ub4(0) to terminate
     pub fn write_bytes_with_length(&mut self, bytes: Option<&[u8]>) -> Result<()> {
+        self.write_bytes_with_length_ext(bytes, true)
+    }
+
+    pub fn write_bytes_with_length_ext(&mut self, bytes: Option<&[u8]>, big_clr: bool) -> Result<()> {
         /// Maximum chunk size for long data (TNS_CHUNK_SIZE from Python)
         const CHUNK_SIZE: usize = 32767;
 
@@ -281,17 +285,24 @@ impl WriteBuffer {
                     self.write_u8(len as u8)?;
                     self.write_bytes(data)
                 } else {
-                    // Chunked encoding for long data
                     self.write_u8(length::LONG_INDICATOR)?;
+                    let max_chunk = if big_clr { CHUNK_SIZE } else { length::MAX_SHORT as usize };
                     let mut offset = 0;
                     while offset < len {
-                        let chunk_len = std::cmp::min(len - offset, CHUNK_SIZE);
-                        self.write_ub4(chunk_len as u32)?;
+                        let chunk_len = std::cmp::min(len - offset, max_chunk);
+                        if big_clr {
+                            self.write_ub4(chunk_len as u32)?;
+                        } else {
+                            self.write_u8(chunk_len as u8)?;
+                        }
                         self.write_bytes(&data[offset..offset + chunk_len])?;
                         offset += chunk_len;
                     }
-                    // Terminating zero
-                    self.write_ub4(0)
+                    if big_clr {
+                        self.write_ub4(0)
+                    } else {
+                        self.write_u8(0)
+                    }
                 }
             }
         }
@@ -602,8 +613,11 @@ mod tests {
     /// Short data (length <= 252 bytes):
     ///   [length: u8] [data: bytes]
     ///
-    /// Long data (length > 252 bytes):
-    ///   [0xFE] [chunk1_len: u32be] [chunk1_data] ... [0x00 0x00 0x00 0x00]
+    /// Long data (length > 252 bytes), big CLR chunks:
+    ///   [0xFE] [chunk1_len: ub4] [chunk1_data] ... [ub4(0)]
+    ///
+    /// Long data (length > 252 bytes), small CLR chunks (Oracle 11g):
+    ///   [0xFE] [chunk1_len: u8] [chunk1_data] ... [0x00]
     ///
     /// The threshold is 252 (0xFC), NOT 254 or 255, because:
     ///   - 253 (0xFD) is reserved
