@@ -427,73 +427,53 @@ impl ConnectionInner {
     /// Returns the combined payload of all packets (excluding headers).
     async fn receive_response(&mut self) -> Result<bytes::Bytes> {
         use crate::constants::{data_flags, MessageType};
+        use tokio::time::{timeout, Duration};
 
         let mut accumulated_payload = Vec::new();
         let mut is_first_packet = true;
 
         loop {
-            eprintln!("[rust-oracle] receive_response: waiting for packet...");
-            let packet = self.receive().await?;
-            eprintln!("[rust-oracle] receive_response: got pkt len={} type={:#04x}", packet.len(), if packet.len() > 4 { packet[4] } else { 0 });
+            // First packet: block indefinitely. Subsequent: use timeout.
+            let packet = if is_first_packet {
+                self.receive().await?
+            } else {
+                match timeout(Duration::from_millis(500), self.receive()).await {
+                    Ok(Ok(pkt)) => pkt,
+                    Ok(Err(e)) => return Err(e),
+                    Err(_) => break, // timeout — no more packets
+                }
+            };
 
             if packet.len() < PACKET_HEADER_SIZE {
                 return Err(Error::Protocol("Packet too small".to_string()));
             }
 
-            // Check packet type - only DATA packets can be accumulated
             let packet_type = packet[4];
             if packet_type != PacketType::Data as u8 {
-                // Non-DATA packet (e.g., MARKER) - return as-is for special handling
-                return Ok(packet);
+                if is_first_packet {
+                    return Ok(packet); // MARKER etc — return for caller to handle
+                }
+                break; // non-DATA after accumulation — stop
             }
 
-            // Get payload (everything after the 8-byte header)
             let payload = &packet[PACKET_HEADER_SIZE..];
-
             if payload.len() < 2 {
                 return Err(Error::Protocol("DATA packet payload too small".to_string()));
             }
 
-            // Read data flags (first 2 bytes of payload)
             let data_flags_value = u16::from_be_bytes([payload[0], payload[1]]);
+            let has_end = (data_flags_value & data_flags::END_OF_RESPONSE) != 0
+                || (data_flags_value & data_flags::EOF) != 0
+                || (payload.len() == 3 && payload[2] == MessageType::EndOfResponse as u8);
 
-            // Check for end of response - Python checks both flags and message type
-            let has_end_flag = (data_flags_value & data_flags::END_OF_RESPONSE) != 0;
-            let has_eof_flag = (data_flags_value & data_flags::EOF) != 0;
-
-            // Also check for EndOfResponse message type (header + 3 bytes with msg type 29)
-            let has_end_message = payload.len() == 3
-                && payload[2] == MessageType::EndOfResponse as u8;
-
-            // Accumulate payload first
             if is_first_packet {
-                // First packet: include data flags in accumulated payload
                 accumulated_payload.extend_from_slice(payload);
                 is_first_packet = false;
             } else {
-                // Subsequent packets: skip the data flags, append only the message data
                 accumulated_payload.extend_from_slice(&payload[2..]);
             }
 
-            // Check for end of response using data flags from this packet
-            let is_end_of_response = has_end_flag || has_eof_flag || has_end_message;
-
-            // If data flags don't indicate end, scan the ACCUMULATED message data
-            // for terminal messages. We scan accumulated data (not just current packet)
-            // because messages can span packet boundaries.
-            let has_terminal_message = if !is_end_of_response && accumulated_payload.len() > 2 {
-                self.scan_for_terminal_message(&accumulated_payload[2..])
-            } else {
-                false
-            };
-
-            // Check if this is the last packet
-            if is_end_of_response || has_terminal_message {
-                break;
-            }
-
-            // Sub-SDU packet: no more packets follow for this response.
-            if (packet.len() as u32) < self.sdu_size as u32 {
+            if has_end {
                 break;
             }
         }
