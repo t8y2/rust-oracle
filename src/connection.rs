@@ -613,17 +613,12 @@ impl ConnectionInner {
     /// Returns Err if the connection is closed after reset (some Oracle versions do this)
     async fn handle_marker_reset(&mut self) -> Result<bytes::Bytes> {
         const MARKER_TYPE_RESET: u8 = 2;
-
-        eprintln!("[rust-oracle] handle_marker_reset: sending reset marker");
         self.send_marker(MARKER_TYPE_RESET).await?;
 
         let mut buffered_data: Option<bytes::Bytes> = None;
 
         loop {
-            eprintln!("[rust-oracle] handle_marker_reset: waiting for packet...");
             let packet = self.receive().await?;
-            eprintln!("[rust-oracle] handle_marker_reset: got packet len={} type={:#04x}",
-                packet.len(), if packet.len() > 4 { packet[4] } else { 0 });
             if packet.len() < PACKET_HEADER_SIZE {
                 return Err(Error::Protocol("Invalid packet received".to_string()));
             }
@@ -633,29 +628,22 @@ impl ConnectionInner {
             if packet_type == PacketType::Marker as u8 {
                 if packet.len() >= PACKET_HEADER_SIZE + 3 {
                     let marker_type = packet[PACKET_HEADER_SIZE + 2];
-                    eprintln!("[rust-oracle] handle_marker_reset: marker_type={}", marker_type);
                     if marker_type == MARKER_TYPE_RESET {
-                        eprintln!("[rust-oracle] handle_marker_reset: got RESET marker, breaking");
                         break;
                     }
                 }
             } else {
-                eprintln!("[rust-oracle] handle_marker_reset: buffering non-marker data packet");
                 buffered_data = Some(packet);
             }
         }
 
         if let Some(data) = buffered_data {
-            eprintln!("[rust-oracle] handle_marker_reset: returning buffered data len={}", data.len());
             return Ok(data);
         }
-
-        eprintln!("[rust-oracle] handle_marker_reset: reading error packet after reset...");
         loop {
             match self.receive().await {
                 Ok(packet) => {
                     let ptype = packet[4];
-                    eprintln!("[rust-oracle] handle_marker_reset: post-reset pkt len={} type={:#04x}", packet.len(), ptype);
                     if ptype != PacketType::Marker as u8 {
                         return Ok(packet);
                     }
@@ -2395,28 +2383,18 @@ impl Connection {
         let seq_num = inner.next_sequence_number();
         execute_msg.set_sequence_number(seq_num);
         let request = execute_msg.build_request_with_sdu(&inner.capabilities, large_sdu)?;
-        eprintln!("[rust-oracle] execute_query: sending req len={} seq={} ttc_fv={} large_sdu={} sql={:?}",
-            request.len(), seq_num, inner.capabilities.ttc_field_version, large_sdu,
-            &statement.sql()[..statement.sql().len().min(60)]);
         inner.send(&request).await?;
 
         // Receive and parse response
-        eprintln!("[rust-oracle] execute_query: waiting for response...");
         let response = inner.receive_response().await?;
-        eprintln!("[rust-oracle] execute_query: got response len={} type={:#04x}",
-            response.len(), if response.len() > 4 { response[4] } else { 0 });
 
         // Check for MARKER packet (indicates error - requires reset protocol)
         let packet_type = response[4];
         if packet_type == PacketType::Marker as u8 {
-            eprintln!("[rust-oracle] execute_query: MARKER detected, starting reset");
             let error_response = inner.handle_marker_reset().await?;
-            eprintln!("[rust-oracle] execute_query: marker reset done, parsing error response");
             let payload = &error_response[PACKET_HEADER_SIZE..];
             return self.parse_error_response(payload);
         }
-
-        eprintln!("[rust-oracle] execute_query: parsing query response...");
 
         // Parse the response to extract columns and rows
         let payload = &response[PACKET_HEADER_SIZE..];
