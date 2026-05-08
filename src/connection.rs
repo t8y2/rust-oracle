@@ -1305,6 +1305,22 @@ impl Connection {
 
         let mut result = self.execute_query_with_params(&statement, params).await;
 
+        // Auto-fetch remaining rows if response was truncated
+        if let Ok(ref mut qr) = result {
+            while qr.has_more_rows && qr.cursor_id > 0 {
+                match self.fetch_more(qr.cursor_id, &qr.columns, 500).await {
+                    Ok(more) => {
+                        qr.has_more_rows = more.has_more_rows;
+                        qr.rows.extend(more.rows);
+                    }
+                    Err(_) => {
+                        qr.has_more_rows = false;
+                        break;
+                    }
+                }
+            }
+        }
+
         // For cached statements, restore columns if Oracle didn't send them
         if let (Ok(ref mut query_result), Some(columns)) = (&mut result, cached_columns) {
             if query_result.columns.is_empty() && !columns.is_empty() {
@@ -2398,7 +2414,7 @@ impl Connection {
 
     /// Internal: Execute a query statement with optional bind parameters
     async fn execute_query_with_params(&self, statement: &Statement, params: &[Value]) -> Result<QueryResult> {
-        let prefetch_rows = 100;
+        let prefetch_rows = 500;
 
         let options = ExecuteOptions::for_query(prefetch_rows);
         let mut execute_msg = ExecuteMessage::new(statement, options);
