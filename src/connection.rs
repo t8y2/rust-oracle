@@ -489,6 +489,11 @@ impl ConnectionInner {
             if is_end_of_response || has_terminal_message {
                 break;
             }
+
+            // Sub-SDU packet: no more packets follow for this response.
+            if (packet.len() as u32) < self.sdu_size as u32 {
+                break;
+            }
         }
 
         // Build a synthetic packet with combined payload
@@ -1503,10 +1508,7 @@ impl Connection {
         inner.send(&request).await?;
 
         // Receive response
-        let response = inner.receive().await?;
-        if response.len() <= PACKET_HEADER_SIZE {
-            return Err(Error::Protocol("Empty PL/SQL response".to_string()));
-        }
+        let response = inner.receive_response().await?;
 
         // Check for MARKER packet (indicates error - requires reset protocol)
         let packet_type = response[4];
@@ -1578,10 +1580,7 @@ impl Connection {
         inner.send(&request).await?;
 
         // Receive response
-        let mut response = inner.receive().await?;
-        if response.len() <= PACKET_HEADER_SIZE {
-            return Err(Error::Protocol("Empty batch response".to_string()));
-        }
+        let mut response = inner.receive_response().await?;
 
         // Check packet type - handle MARKER packets
         let packet_type = response[4];
@@ -1592,9 +1591,10 @@ impl Connection {
 
         // Parse the batch response
         let payload = &response[PACKET_HEADER_SIZE..];
+        let ttc_fv = inner.capabilities.ttc_field_version;
         drop(inner); // Release lock before parsing
 
-        self.parse_batch_response(payload, batch.rows.len(), batch.options.array_dml_row_counts)
+        self.parse_batch_response(payload, batch.rows.len(), batch.options.array_dml_row_counts, ttc_fv)
     }
 
     /// Handle MARKER packet protocol (BREAK/RESET)
@@ -1677,6 +1677,7 @@ impl Connection {
         payload: &[u8],
         batch_size: usize,
         want_row_counts: bool,
+        ttc_field_version: u8,
     ) -> Result<BatchResult> {
         if payload.len() < 3 {
             return Err(Error::Protocol("Batch response too short".to_string()));
@@ -1698,7 +1699,7 @@ impl Connection {
             match msg_type {
                 // Error (4) - may contain error or success info
                 x if x == MessageType::Error as u8 => {
-                    let (error_code, error_msg, _cid, row_count) = self.parse_error_info_with_rowcount(&mut buf)?;
+                    let (error_code, error_msg, _cid, row_count) = self.parse_error_info_with_rowcount(&mut buf, ttc_field_version)?;
                     rows_affected = row_count;
                     if error_code != 0 && error_code != 1403 {
                         return Err(Error::OracleError {
@@ -1786,10 +1787,7 @@ impl Connection {
         inner.send(&request).await?;
 
         // Receive and parse response
-        let response = inner.receive().await?;
-        if response.len() <= PACKET_HEADER_SIZE {
-            return Err(Error::Protocol("Empty fetch response".to_string()));
-        }
+        let response = inner.receive_response().await?;
 
         // Parse row data from response
         let payload = &response[PACKET_HEADER_SIZE..];
@@ -1879,10 +1877,7 @@ impl Connection {
         inner.send(&request).await?;
 
         // Receive and parse response
-        let response = inner.receive().await?;
-        if response.len() <= PACKET_HEADER_SIZE {
-            return Err(Error::Protocol("Empty cursor response".to_string()));
-        }
+        let response = inner.receive_response().await?;
 
         // Check for MARKER packet (indicates error)
         let packet_type = response[4];
@@ -2414,10 +2409,7 @@ impl Connection {
         inner.send(&request).await?;
 
         // Receive and parse response
-        let response = inner.receive().await?;
-        if response.len() <= PACKET_HEADER_SIZE {
-            return Err(Error::Protocol("Empty query response".to_string()));
-        }
+        let response = inner.receive_response().await?;
 
         // Check for MARKER packet (indicates error - requires reset protocol)
         let packet_type = response[4];
@@ -2455,10 +2447,7 @@ impl Connection {
             inner.send(&define_request).await?;
 
             // Receive the re-execute response
-            let define_response = inner.receive().await?;
-            if define_response.len() <= PACKET_HEADER_SIZE {
-                return Err(Error::Protocol("Empty define response".to_string()));
-            }
+            let define_response = inner.receive_response().await?;
 
             // Check for MARKER packet
             let packet_type = define_response[4];
@@ -2491,6 +2480,7 @@ impl Connection {
         }
 
         let mut inner = self.inner.lock().await;
+        let ttc_fv = inner.capabilities.ttc_field_version;
         let large_sdu = inner.large_sdu;
         let seq_num = inner.next_sequence_number();
         execute_msg.set_sequence_number(seq_num);
@@ -2499,10 +2489,7 @@ impl Connection {
         inner.send(&request).await?;
 
         // Receive response
-        let mut response = inner.receive().await?;
-        if response.len() <= PACKET_HEADER_SIZE {
-            return Err(Error::Protocol("Empty DML response".to_string()));
-        }
+        let mut response = inner.receive_response().await?;
 
         // Check packet type - handle MARKER packets
         let packet_type = response[4];
@@ -2552,7 +2539,7 @@ impl Connection {
                             } else if pkt_type == PacketType::Data as u8 {
                                 // Got DATA packet - use this as the response (may contain error)
                                 let payload = &pkt[PACKET_HEADER_SIZE..];
-                                return self.parse_dml_response(payload);
+                                return self.parse_dml_response(payload, ttc_fv);
                             } else {
                                 break;
                             }
@@ -2615,7 +2602,7 @@ impl Connection {
 
         // Parse the response to extract rows affected (or error)
         let payload = &response[PACKET_HEADER_SIZE..];
-        self.parse_dml_response(payload)
+        self.parse_dml_response(payload, ttc_fv)
     }
 
     /// Parse query response to extract columns and rows
@@ -2693,7 +2680,7 @@ impl Connection {
 
                 // Error (4) - completion or error
                 x if x == MessageType::Error as u8 => {
-                    let (error_code, error_msg, cid, rc) = self.parse_error_info_with_rowcount(&mut buf)?;
+                    let (error_code, error_msg, cid, rc) = self.parse_error_info_with_rowcount(&mut buf, caps.ttc_field_version)?;
                     cursor_id = cid;
                     row_count = rc;
                     if error_code != 0 && error_code != 1403 {
@@ -2839,7 +2826,7 @@ impl Connection {
 
                 // Error (4) - completion or error
                 x if x == MessageType::Error as u8 => {
-                    let (error_code, error_msg, _cid, rc) = self.parse_error_info_with_rowcount(&mut buf)?;
+                    let (error_code, error_msg, _cid, rc) = self.parse_error_info_with_rowcount(&mut buf, caps.ttc_field_version)?;
                     row_count = rc;
                     if error_code != 0 {
                         return Err(Error::OracleError {
@@ -3033,18 +3020,24 @@ impl Connection {
             buf.skip(al8txl as usize)?;
         }
 
-        // num key/value pairs - skip for now
+        // key/value pairs
         let num_pairs = buf.read_ub2()?;
         for _ in 0..num_pairs {
-            buf.read_bytes_with_length()?;  // text value
-            buf.read_bytes_with_length()?;  // binary value
-            buf.skip_ub2()?;  // keyword num
+            let text_len = buf.read_ub4()?;
+            if text_len > 0 {
+                buf.skip_raw_bytes_chunked()?;
+            }
+            let bin_len = buf.read_ub4()?;
+            if bin_len > 0 {
+                buf.skip_raw_bytes_chunked()?;
+            }
+            buf.skip_ub4()?;
         }
 
-        // registration
-        let num_bytes = buf.read_ub2()?;
+        // queryID / registration
+        let num_bytes = buf.read_ub4()? as usize;
         if num_bytes > 0 {
-            buf.skip(num_bytes as usize)?;
+            buf.skip(num_bytes)?;
         }
 
         // If arraydmlrowcounts was requested, parse the row counts
@@ -3629,7 +3622,7 @@ impl Connection {
     }
 
     /// Parse DML response to extract rows affected
-    fn parse_dml_response(&self, payload: &[u8]) -> Result<QueryResult> {
+    fn parse_dml_response(&self, payload: &[u8], ttc_field_version: u8) -> Result<QueryResult> {
         if payload.len() < 3 {
             return Err(Error::Protocol("DML response too short".to_string()));
         }
@@ -3651,7 +3644,7 @@ impl Connection {
             match msg_type {
                 // Error (4) - may contain error or success info
                 x if x == MessageType::Error as u8 => {
-                    let (error_code, error_msg, cid, row_count) = self.parse_error_info_with_rowcount(&mut buf)?;
+                    let (error_code, error_msg, cid, row_count) = self.parse_error_info_with_rowcount(&mut buf, ttc_field_version)?;
                     cursor_id = cid;
                     rows_affected = row_count;
                     if error_code != 0 && error_code != 1403 {
@@ -3705,15 +3698,17 @@ impl Connection {
     }
 
     /// Parse error info and return (error_code, error_msg, cursor_id, row_count)
-    fn parse_error_info_with_rowcount(&self, buf: &mut ReadBuffer) -> Result<(u32, Option<String>, u16, u64)> {
+    fn parse_error_info_with_rowcount(&self, buf: &mut ReadBuffer, ttc_field_version: u8) -> Result<(u32, Option<String>, u16, u64)> {
+        use crate::constants::ccap_value;
+
         // End of call status
         let _call_status = buf.read_ub4()?;
         // End to end seq#
         buf.skip_ub2()?;
-        // Current row number
-        buf.skip_ub4()?;
-        // Error number (short form)
-        buf.skip_ub2()?;
+        // Current row number (used as row_count for Oracle 11g)
+        let cur_row_number = buf.read_ub4()? as u64;
+        // Error number (short form) — used as error code for Oracle 11g
+        let error_num_short = buf.read_ub2()?;
         // Array elem error
         buf.skip_ub2()?;
         // Array elem error
@@ -3756,44 +3751,51 @@ impl Connection {
             buf.skip_raw_bytes_chunked()?;
         }
 
-        // Batch error codes array
-        let num_batch_errors = buf.read_ub2()?;
-        if num_batch_errors > 0 {
-            buf.skip_ub1()?;  // first byte
-            for _ in 0..num_batch_errors {
-                buf.skip_ub2()?;  // error code
+        let (error_code, row_count);
+
+        if ttc_field_version >= ccap_value::FIELD_VERSION_12_1 {
+            // Oracle 12.1+ (TTC >= 7): batch errors + extended error + row count
+            let num_batch_errors = buf.read_ub2()?;
+            if num_batch_errors > 0 {
+                buf.skip_ub1()?;
+                for _ in 0..num_batch_errors {
+                    buf.skip_ub2()?;
+                }
             }
-        }
-
-        // Batch error row offset array
-        let num_offsets = buf.read_ub4()?;
-        if num_offsets > 0 {
-            buf.skip_ub1()?;  // first byte
-            for _ in 0..num_offsets {
-                buf.skip_ub4()?;  // offset
+            let num_offsets = buf.read_ub4()?;
+            if num_offsets > 0 {
+                buf.skip_ub1()?;
+                for _ in 0..num_offsets {
+                    buf.skip_ub4()?;
+                }
             }
-        }
-
-        // Batch error messages array
-        let num_batch_msgs = buf.read_ub2()?;
-        if num_batch_msgs > 0 {
-            buf.skip_ub1()?;  // packed size
-            for _ in 0..num_batch_msgs {
-                buf.skip_ub2()?;  // chunk length
-                buf.read_string_with_length()?;  // message
-                buf.skip(2)?;  // end marker
+            let num_batch_msgs = buf.read_ub2()?;
+            if num_batch_msgs > 0 {
+                buf.skip_ub1()?;
+                for _ in 0..num_batch_msgs {
+                    buf.skip_ub2()?;
+                    buf.read_string_with_length()?;
+                    buf.skip(2)?;
+                }
             }
+            error_code = buf.read_ub4()?;
+            row_count = buf.read_ub8()?;
+
+            if ttc_field_version >= ccap_value::FIELD_VERSION_21_1 {
+                buf.skip_ub4()?; // sql_type
+                buf.skip_ub4()?; // server_checksum
+            }
+        } else {
+            // Oracle 11g (TTC < 7): 3 DLC values, no extended error/row count
+            let len = buf.read_ub4()?;
+            if len > 0 { buf.skip_raw_bytes_chunked()?; }
+            let len = buf.read_ub4()?;
+            if len > 0 { buf.skip_raw_bytes_chunked()?; }
+            let len = buf.read_ub4()?;
+            if len > 0 { buf.skip_raw_bytes_chunked()?; }
+            error_code = error_num_short as u32;
+            row_count = cur_row_number;
         }
-
-        // Extended error number (UB4)
-        let error_code = buf.read_ub4()?;
-        // Row count (UB8) - this is the rows affected!
-        let row_count = buf.read_ub8()?;
-
-        // Fields added in Oracle Database 20c (TTC field version >= 16)
-        // We always skip these since we support Oracle 20c+
-        buf.skip_ub4()?; // sql_type
-        buf.skip_ub4()?; // server_checksum
 
         // Error message
         let error_msg = if error_code != 0 {

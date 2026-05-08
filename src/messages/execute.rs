@@ -406,15 +406,17 @@ impl<'a> ExecuteMessage<'a> {
         buf.write_ub4(0)?; // al8dnaml
         buf.write_ub4(0)?; // al8regid_msb
 
-        // DML row counts
-        if opts.dml_row_counts {
-            buf.write_u8(1)?; // Pointer (al8pidmlrc)
-            buf.write_ub4(opts.num_execs)?; // al8pidmlrcbl
-            buf.write_u8(1)?; // Pointer (al8pidmlrcl)
-        } else {
-            buf.write_u8(0)?; // Pointer (al8pidmlrc)
-            buf.write_ub4(0)?; // al8pidmlrcbl
-            buf.write_u8(0)?; // Pointer (al8pidmlrcl)
+        // DML row counts (Oracle 12.1+ / TTC field version >= 7)
+        if caps.ttc_field_version >= ccap_value::FIELD_VERSION_12_1 {
+            if opts.dml_row_counts {
+                buf.write_u8(1)?; // Pointer (al8pidmlrc)
+                buf.write_ub4(opts.num_execs)?; // al8pidmlrcbl
+                buf.write_u8(1)?; // Pointer (al8pidmlrcl)
+            } else {
+                buf.write_u8(0)?; // Pointer (al8pidmlrc)
+                buf.write_ub4(0)?; // al8pidmlrcbl
+                buf.write_u8(0)?; // Pointer (al8pidmlrcl)
+            }
         }
 
         // Extended fields (12.2+)
