@@ -1305,6 +1305,16 @@ impl Connection {
 
         let mut result = self.execute_query_with_params(&statement, params).await;
 
+        // If cached statement returned 0 rows, retry with fresh parse
+        if from_cache {
+            if let Ok(ref qr) = result {
+                if qr.rows.is_empty() && qr.columns.is_empty() {
+                    let fresh = Statement::new(statement.sql());
+                    result = self.execute_query_with_params(&fresh, params).await;
+                }
+            }
+        }
+
         // Auto-fetch remaining rows if response was truncated
         if let Ok(ref mut qr) = result {
             while qr.has_more_rows && qr.cursor_id > 0 {
