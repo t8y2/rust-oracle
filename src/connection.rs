@@ -453,9 +453,15 @@ impl ConnectionInner {
         accumulated_payload.extend_from_slice(payload);
 
         loop {
+            // Check if accumulated data ends with a terminal message
+            if response_looks_complete(&accumulated_payload) {
+                break;
+            }
+
+            // Short timeout fallback — if tail scan can't detect completion
             let packet = {
                 use tokio::time::{timeout, Duration};
-                match timeout(Duration::from_millis(5), self.receive()).await {
+                match timeout(Duration::from_millis(2), self.receive()).await {
                     Ok(Ok(pkt)) => pkt,
                     Ok(Err(e)) => return Err(e),
                     Err(_) => break,
@@ -631,6 +637,7 @@ impl ConnectionInner {
         }
 
         if let Some(data) = buffered_data {
+            self.drain_stale_packets().await;
             return Ok(data);
         }
         loop {
@@ -638,16 +645,12 @@ impl ConnectionInner {
                 Ok(packet) => {
                     let ptype = packet[4];
                     if ptype != PacketType::Marker as u8 {
+                        self.drain_stale_packets().await;
                         return Ok(packet);
                     }
                 }
                 Err(_) => {
-                    // Connection closed after reset - Oracle Free and some versions
-                    // close the connection instead of sending the error details.
-                    // This typically happens when:
-                    // - Table or view doesn't exist
-                    // - Insufficient privileges to access the object
-                    // - Invalid SQL syntax
+                    self.mark_closed();
                     return Err(Error::ConnectionClosedByServer(
                         "Query failed - Oracle closed the connection without providing error details. \
                          This typically indicates insufficient privileges or the object doesn't exist.".to_string()
@@ -655,6 +658,21 @@ impl ConnectionInner {
                 }
             }
         }
+    }
+
+    async fn drain_stale_packets(&mut self) {
+        use tokio::time::{timeout, Duration};
+        loop {
+            match timeout(Duration::from_millis(1), self.receive()).await {
+                Ok(Ok(_)) => continue,
+                _ => break,
+            }
+        }
+    }
+
+    fn mark_closed(&mut self) {
+        self.stream = None;
+        self.state = ConnectionState::Disconnected;
     }
 }
 
@@ -2359,10 +2377,8 @@ impl Connection {
 
     /// Internal: Execute a query statement with optional bind parameters
     async fn execute_query_with_params(&self, statement: &Statement, params: &[Value]) -> Result<QueryResult> {
-        let prefetch_rows = 100; // Default prefetch
+        let prefetch_rows = estimate_prefetch(statement.sql());
 
-        // For first execution, check if we might have LOBs (no prefetch for safety)
-        // This can be optimized later with describe-only first
         let options = ExecuteOptions::for_query(prefetch_rows);
         let mut execute_msg = ExecuteMessage::new(statement, options);
 
@@ -5080,6 +5096,61 @@ impl Drop for Connection {
 // =============================================================================
 // Helper functions for get_type()
 // =============================================================================
+
+/// Estimate optimal prefetch row count based on SQL content.
+fn estimate_prefetch(sql: &str) -> u32 {
+    let upper: String = sql.chars().take(200).flat_map(|c| c.to_uppercase()).collect();
+    // Metadata queries — typically few rows, prefetch all in one round trip
+    if upper.contains("ALL_TABLES")
+        || upper.contains("ALL_OBJECTS")
+        || upper.contains("ALL_VIEWS")
+        || upper.contains("ALL_TAB_COLUMNS")
+        || upper.contains("ALL_CONS_COLUMNS")
+        || upper.contains("ALL_CONSTRAINTS")
+        || upper.contains("ALL_INDEXES")
+        || upper.contains("ALL_IND_COLUMNS")
+        || upper.contains("ALL_TRIGGERS")
+        || upper.contains("ALL_USERS")
+        || upper.contains("USER_TABLES")
+        || upper.contains("USER_TAB_COLUMNS")
+        || upper.contains("DBA_")
+    {
+        return 500;
+    }
+    // ROWNUM-limited queries — match the limit
+    if let Some(pos) = upper.find("ROWNUM") {
+        if let Some(le_pos) = upper[pos..].find("<=") {
+            let after = upper[pos + le_pos.wrapping_add(2)..].trim_start();
+            if let Some(n) = after.split_whitespace().next().and_then(|s| s.trim_matches(')').parse::<u32>().ok()) {
+                return n.min(1000);
+            }
+        }
+    }
+    100
+}
+
+/// Check if accumulated response data (after data flags) looks like a complete
+/// TTC response. Oracle 11g terminates query responses with an Error(4) message
+/// whose text ends with `\n`, or with zero-valued Status fields.
+fn response_looks_complete(payload: &[u8]) -> bool {
+    if payload.len() < 5 {
+        return false;
+    }
+    let msg_data = &payload[2..]; // skip data flags
+    let last = *msg_data.last().unwrap_or(&0);
+    // Error message text always ends with \n (0x0a)
+    if last == 0x0a {
+        return true;
+    }
+    // Successful DML with no error message ends with Status(09 00 00) or similar
+    if msg_data.len() >= 3 {
+        let n = msg_data.len();
+        if msg_data[n - 3] == 0x09 && msg_data[n - 2] == 0x00 && msg_data[n - 1] == 0x00 {
+            return true;
+        }
+    }
+    false
+}
 
 /// Parse a type name into (schema, name) components
 ///

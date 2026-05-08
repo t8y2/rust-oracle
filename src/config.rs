@@ -328,6 +328,12 @@ impl Config {
         self
     }
 
+    /// Enable SYSDBA authentication mode
+    pub fn sysdba_flag(mut self, enabled: bool) -> Self {
+        self.sysdba = enabled;
+        self
+    }
+
     /// Get the password (for authentication)
     pub(crate) fn password(&self) -> &str {
         &self.password
