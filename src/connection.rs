@@ -387,13 +387,9 @@ impl ConnectionInner {
 
     async fn receive(&mut self) -> Result<bytes::Bytes> {
         if let Some(stream) = &mut self.stream {
-            // Read packet header first (always 8 bytes)
-            // large_sdu only affects how the length field is interpreted, not header size
-            let mut header_buf = vec![0u8; PACKET_HEADER_SIZE];
+            let mut header_buf = [0u8; PACKET_HEADER_SIZE];
             stream.read_exact(&mut header_buf).await?;
 
-            // Parse header to get payload length
-            // In large_sdu mode, first 4 bytes are length; otherwise first 2 bytes
             let packet_len = if self.large_sdu {
                 u32::from_be_bytes([header_buf[0], header_buf[1], header_buf[2], header_buf[3]])
                     as usize
@@ -401,17 +397,13 @@ impl ConnectionInner {
                 u16::from_be_bytes([header_buf[0], header_buf[1]]) as usize
             };
 
-            // Read remaining payload
             let payload_len = packet_len.saturating_sub(PACKET_HEADER_SIZE);
-            let mut payload_buf = vec![0u8; payload_len];
+            let mut full_packet = Vec::with_capacity(packet_len);
+            full_packet.extend_from_slice(&header_buf);
             if payload_len > 0 {
-                stream.read_exact(&mut payload_buf).await?;
+                full_packet.resize(packet_len, 0);
+                stream.read_exact(&mut full_packet[PACKET_HEADER_SIZE..]).await?;
             }
-
-            // Combine header and payload
-            let mut full_packet = header_buf.clone();
-            full_packet.extend(payload_buf);
-
             Ok(bytes::Bytes::from(full_packet))
         } else {
             Err(Error::ConnectionClosed)
@@ -429,56 +421,58 @@ impl ConnectionInner {
         use crate::constants::{data_flags, MessageType};
 
         let needs_timeout = !self.capabilities.supports_end_of_response;
-        let mut accumulated_payload = Vec::new();
-        let mut is_first_packet = true;
+
+        // Fast path: read first packet
+        let first_packet = self.receive().await?;
+        if first_packet.len() < PACKET_HEADER_SIZE {
+            return Err(Error::Protocol("Packet too small".to_string()));
+        }
+
+        // Non-DATA (MARKER etc) — return as-is
+        if first_packet[4] != PacketType::Data as u8 {
+            return Ok(first_packet);
+        }
+
+        let payload = &first_packet[PACKET_HEADER_SIZE..];
+        if payload.len() < 2 {
+            return Err(Error::Protocol("DATA packet payload too small".to_string()));
+        }
+
+        let flags = u16::from_be_bytes([payload[0], payload[1]]);
+        let has_end = (flags & data_flags::END_OF_RESPONSE) != 0
+            || (flags & data_flags::EOF) != 0
+            || (payload.len() == 3 && payload[2] == MessageType::EndOfResponse as u8);
+
+        // Single-packet response (most common) — zero-copy return
+        if has_end || !needs_timeout {
+            return Ok(first_packet);
+        }
+
+        // Multi-packet path (Oracle 11g without END_OF_RESPONSE)
+        let mut accumulated_payload = Vec::with_capacity(payload.len() + 256);
+        accumulated_payload.extend_from_slice(payload);
 
         loop {
-            let packet = if !is_first_packet && needs_timeout {
+            let packet = {
                 use tokio::time::{timeout, Duration};
                 match timeout(Duration::from_millis(5), self.receive()).await {
                     Ok(Ok(pkt)) => pkt,
                     Ok(Err(e)) => return Err(e),
                     Err(_) => break,
                 }
-            } else {
-                self.receive().await?
             };
 
-            if packet.len() < PACKET_HEADER_SIZE {
-                return Err(Error::Protocol("Packet too small".to_string()));
-            }
-
-            let packet_type = packet[4];
-            if packet_type != PacketType::Data as u8 {
-                if is_first_packet {
-                    return Ok(packet); // MARKER etc — return for caller to handle
-                }
-                break; // non-DATA after accumulation — stop
-            }
-
-            let payload = &packet[PACKET_HEADER_SIZE..];
-            if payload.len() < 2 {
-                return Err(Error::Protocol("DATA packet payload too small".to_string()));
-            }
-
-            let data_flags_value = u16::from_be_bytes([payload[0], payload[1]]);
-            let has_end = (data_flags_value & data_flags::END_OF_RESPONSE) != 0
-                || (data_flags_value & data_flags::EOF) != 0
-                || (payload.len() == 3 && payload[2] == MessageType::EndOfResponse as u8);
-
-            if is_first_packet {
-                accumulated_payload.extend_from_slice(payload);
-                is_first_packet = false;
-            } else {
-                accumulated_payload.extend_from_slice(&payload[2..]);
-            }
-
-            if has_end {
+            if packet.len() < PACKET_HEADER_SIZE || packet[4] != PacketType::Data as u8 {
                 break;
+            }
+
+            let p = &packet[PACKET_HEADER_SIZE..];
+            if p.len() >= 2 {
+                accumulated_payload.extend_from_slice(&p[2..]);
             }
         }
 
-        // Build a synthetic packet with combined payload
+        // Build synthetic packet
         let total_len = PACKET_HEADER_SIZE + accumulated_payload.len();
         let mut result = Vec::with_capacity(total_len);
 
