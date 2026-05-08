@@ -634,7 +634,11 @@ impl ConnectionInner {
         // Send reset marker
         self.send_marker(MARKER_TYPE_RESET).await?;
 
-        // Read packets until we get a reset marker back
+        // Read packets until we get a reset marker back.
+        // Buffer any non-marker data packet received before the reset marker
+        // (Oracle may have sent it before processing our reset request).
+        let mut buffered_data: Option<bytes::Bytes> = None;
+
         loop {
             let packet = self.receive().await?;
             if packet.len() < PACKET_HEADER_SIZE {
@@ -644,7 +648,6 @@ impl ConnectionInner {
             let packet_type = packet[4];
 
             if packet_type == PacketType::Marker as u8 {
-                // Check if it's a reset marker
                 if packet.len() >= PACKET_HEADER_SIZE + 3 {
                     let marker_type = packet[PACKET_HEADER_SIZE + 2];
                     if marker_type == MARKER_TYPE_RESET {
@@ -652,12 +655,16 @@ impl ConnectionInner {
                     }
                 }
             } else {
-                // Non-marker packet received unexpectedly during reset wait
-                return Ok(packet);
+                buffered_data = Some(packet);
             }
         }
 
-        // Try to read the error packet (may need to skip additional marker packets first)
+        // Return buffered data if we already received it before the reset marker
+        if let Some(data) = buffered_data {
+            return Ok(data);
+        }
+
+        // Otherwise read the error packet after reset
         // Note: Some Oracle versions (like Oracle Free) may close the connection after reset
         // instead of sending an error packet
         loop {
