@@ -1279,6 +1279,33 @@ impl Connection {
     /// ).await?;
     /// ```
     pub async fn query(&self, sql: &str, params: &[Value]) -> Result<QueryResult> {
+        self.query_internal(sql, params, None, 500).await
+    }
+
+    /// Execute a query and fetch at most `max_rows` rows.
+    ///
+    /// Unlike [`query`](Self::query), this method does not automatically drain
+    /// the entire result set when the query returns more than `max_rows` rows.
+    /// It fetches one extra row to detect truncation, then returns at most
+    /// `max_rows` rows.
+    pub async fn query_with_limit(
+        &self,
+        sql: &str,
+        params: &[Value],
+        max_rows: usize,
+        fetch_size: u32,
+    ) -> Result<QueryResult> {
+        self.query_internal(sql, params, Some(max_rows.max(1)), fetch_size.max(1))
+            .await
+    }
+
+    async fn query_internal(
+        &self,
+        sql: &str,
+        params: &[Value],
+        row_limit: Option<usize>,
+        fetch_size: u32,
+    ) -> Result<QueryResult> {
         self.ensure_ready().await?;
 
         // Check statement cache for existing prepared statement
@@ -1303,25 +1330,56 @@ impl Connection {
             None
         };
 
-        let mut result = self.execute_query_with_params(&statement, params).await;
+        let initial_fetch_size = row_limit
+            .map(|limit| limit.saturating_add(1).min(u32::MAX as usize) as u32)
+            .unwrap_or(fetch_size);
+        let mut result = self
+            .execute_query_with_params_prefetch(&statement, params, initial_fetch_size)
+            .await;
 
         // If cached statement returned 0 rows, retry with fresh parse
         if from_cache {
             if let Ok(ref qr) = result {
                 if qr.rows.is_empty() && qr.columns.is_empty() {
                     let fresh = Statement::new(statement.sql());
-                    result = self.execute_query_with_params(&fresh, params).await;
+                    result = self
+                        .execute_query_with_params_prefetch(&fresh, params, initial_fetch_size)
+                        .await;
                 }
             }
         }
 
         // Auto-fetch remaining rows if response was truncated
         if let Ok(ref mut qr) = result {
+            if let Some(limit) = row_limit {
+                if qr.rows.len() > limit {
+                    qr.rows.truncate(limit);
+                    qr.has_more_rows = true;
+                }
+                qr.cursor_id = 0;
+            }
+
             while qr.has_more_rows && qr.cursor_id > 0 {
-                match self.fetch_more(qr.cursor_id, &qr.columns, 500).await {
+                let next_fetch_size = if let Some(limit) = row_limit {
+                    if qr.rows.len() >= limit {
+                        break;
+                    }
+                    (limit - qr.rows.len()).min(fetch_size as usize) as u32
+                } else {
+                    fetch_size
+                };
+
+                match self.fetch_more(qr.cursor_id, &qr.columns, next_fetch_size).await {
                     Ok(more) => {
                         qr.has_more_rows = more.has_more_rows;
                         qr.rows.extend(more.rows);
+                        if let Some(limit) = row_limit {
+                            if qr.rows.len() > limit {
+                                qr.rows.truncate(limit);
+                                qr.has_more_rows = true;
+                                break;
+                            }
+                        }
                     }
                     Err(_) => {
                         qr.has_more_rows = false;
@@ -1349,12 +1407,13 @@ impl Connection {
             Ok(query_result) => {
                 let mut inner = self.inner.lock().await;
                 if let Some(ref mut cache) = inner.statement_cache {
+                    let keep_cursor_in_cache = !(row_limit.is_some() && query_result.has_more_rows);
                     if from_cache {
                         cache.return_statement(sql);
-                        if !query_result.has_more_rows {
+                        if !query_result.has_more_rows || !keep_cursor_in_cache {
                             cache.mark_cursor_closed(sql);
                         }
-                    } else if query_result.cursor_id > 0 && !statement.is_ddl() {
+                    } else if keep_cursor_in_cache && query_result.cursor_id > 0 && !statement.is_ddl() {
                         let mut stmt_to_cache = statement.clone();
                         stmt_to_cache.set_cursor_id(query_result.cursor_id);
                         stmt_to_cache.set_executed(true);
@@ -2430,7 +2489,17 @@ impl Connection {
 
     /// Internal: Execute a query statement with optional bind parameters
     async fn execute_query_with_params(&self, statement: &Statement, params: &[Value]) -> Result<QueryResult> {
-        let prefetch_rows = 500;
+        self.execute_query_with_params_prefetch(statement, params, 500).await
+    }
+
+    /// Internal: Execute a query statement with optional bind parameters and a custom prefetch size.
+    async fn execute_query_with_params_prefetch(
+        &self,
+        statement: &Statement,
+        params: &[Value],
+        prefetch_rows: u32,
+    ) -> Result<QueryResult> {
+        let prefetch_rows = prefetch_rows.max(1);
 
         let options = ExecuteOptions::for_query(prefetch_rows);
         let mut execute_msg = ExecuteMessage::new(statement, options);
@@ -3185,7 +3254,7 @@ impl Connection {
 
     /// Parse a single column value from the buffer
     fn parse_column_value(&self, buf: &mut ReadBuffer, col: &ColumnInfo, caps: &Capabilities) -> Result<Value> {
-        use crate::constants::OracleType;
+        use crate::constants::{csfrm, OracleType};
 
         // Handle LOB columns specially - they have a different format
         if col.is_lob() {
@@ -3218,7 +3287,11 @@ impl Connection {
                         Ok(Value::String(num.value))
                     }
                     OracleType::Varchar | OracleType::Char | OracleType::Long => {
-                        let s = String::from_utf8_lossy(&bytes).into_owned();
+                        let s = if col.csfrm == csfrm::NCHAR {
+                            decode_nchar_bytes(&bytes, caps.ncharset_id)?
+                        } else {
+                            String::from_utf8_lossy(&bytes).into_owned()
+                        };
                         Ok(Value::String(s))
                     }
                     OracleType::Raw | OracleType::LongRaw => {
@@ -3242,7 +3315,11 @@ impl Connection {
                     }
                     _ => {
                         // Default: return as raw bytes or string
-                        let s = String::from_utf8_lossy(&bytes).into_owned();
+                        let s = if col.csfrm == csfrm::NCHAR {
+                            decode_nchar_bytes(&bytes, caps.ncharset_id)?
+                        } else {
+                            String::from_utf8_lossy(&bytes).into_owned()
+                        };
                         Ok(Value::String(s))
                     }
                 }
@@ -3744,7 +3821,7 @@ impl Connection {
             let _oid = buf.read_bytes_with_length()?; // OID
             buf.skip_ub2()?; // version
             buf.skip_ub2()?; // charset_id
-            let _csfrm = buf.read_u8()?; // charset form
+            let csfrm = buf.read_u8()?; // charset form
             let max_size = buf.read_ub4()?;
 
             // For TTC field version >= 12.2 (8), skip oaccolid
@@ -3799,6 +3876,7 @@ impl Connection {
             col.data_size = if max_size > 0 { max_size } else { buffer_size };
             col.precision = precision as i16;
             col.scale = scale as i16;
+            col.csfrm = csfrm;
             columns.push(col);
         }
 
@@ -5214,6 +5292,29 @@ fn oracle_type_from_name(type_name: &str) -> crate::constants::OracleType {
     }
 }
 
+fn decode_nchar_bytes(bytes: &[u8], ncharset_id: u16) -> Result<String> {
+    match ncharset_id {
+        crate::constants::charset::UTF16 => {
+            if bytes.len() % 2 != 0 {
+                return Err(Error::DataConversionError(
+                    "Invalid AL16UTF16 string: odd byte length".to_string(),
+                ));
+            }
+            let units: Vec<u16> = bytes
+                .chunks_exact(2)
+                .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
+                .collect();
+            String::from_utf16(&units)
+                .map_err(|e| Error::DataConversionError(format!("Invalid AL16UTF16 string: {e}")))
+        }
+        crate::constants::charset::AL16UTF8 | crate::constants::charset::UTF8 => {
+            String::from_utf8(bytes.to_vec())
+                .map_err(|e| Error::DataConversionError(format!("Invalid UTF-8 string: {e}")))
+        }
+        _ => Ok(String::from_utf8_lossy(bytes).into_owned()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5305,5 +5406,19 @@ mod tests {
 
         let collected: Vec<Row> = result.into_iter().collect();
         assert_eq!(collected.len(), 2);
+    }
+
+    #[test]
+    fn test_decode_al16utf16_string() {
+        let bytes = [0x5c, 0x0f, 0x5f, 0x20, 0x00, 0x20, 0x8c, 0xc7, 0x65, 0x99, 0x5e, 0xab];
+        let decoded = decode_nchar_bytes(&bytes, crate::constants::charset::UTF16).unwrap();
+        assert_eq!(decoded, "小张 資料庫");
+    }
+
+    #[test]
+    fn test_decode_al16utf16_surrogate_pair() {
+        let bytes = [0xd8, 0x3d, 0xde, 0x0a];
+        let decoded = decode_nchar_bytes(&bytes, crate::constants::charset::UTF16).unwrap();
+        assert_eq!(decoded, "😊");
     }
 }

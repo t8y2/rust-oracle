@@ -177,6 +177,62 @@ mod query_tests {
 
     #[tokio::test]
     #[ignore = "requires Oracle database"]
+    async fn test_unicode_string_query() {
+        let conn = connect().await.expect("Failed to connect");
+
+        let result = conn
+            .query("SELECT '中文测试' AS text FROM DUAL", &[])
+            .await
+            .expect("Query failed");
+
+        assert_eq!(result.row_count(), 1);
+        assert_eq!(result.rows[0].get_string(0), Some("中文测试"));
+
+        conn.close().await.expect("Failed to close");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle database"]
+    async fn test_nchar_unicode_string_query() {
+        let conn = connect().await.expect("Failed to connect");
+
+        let result = conn
+            .query("SELECT N'小张 資料庫 😊' AS text FROM DUAL", &[])
+            .await
+            .expect("Query failed");
+
+        assert_eq!(result.row_count(), 1);
+        assert_eq!(result.rows[0].get_string(0), Some("小张 資料庫 😊"));
+
+        conn.close().await.expect("Failed to close");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle database"]
+    async fn test_query_with_limit() {
+        let conn = connect().await.expect("Failed to connect");
+
+        let result = conn
+            .query_with_limit(
+                "SELECT TO_CHAR(LEVEL) AS id FROM DUAL CONNECT BY LEVEL <= 25 ORDER BY LEVEL",
+                &[],
+                10,
+                4,
+            )
+            .await
+            .expect("Limited query failed");
+
+        assert_eq!(result.row_count(), 10);
+        assert!(result.has_more_rows);
+        assert_eq!(result.cursor_id, 0);
+        assert_eq!(result.rows[0].get_string(0), Some("1"));
+        assert_eq!(result.rows[9].get_string(0), Some("10"));
+
+        conn.close().await.expect("Failed to close");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle database"]
     async fn test_multiple_columns() {
         let conn = connect().await.expect("Failed to connect");
 
