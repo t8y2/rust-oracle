@@ -233,6 +233,29 @@ mod query_tests {
 
     #[tokio::test]
     #[ignore = "requires Oracle database"]
+    async fn test_query_fetches_all_prefetched_rows() {
+        let conn = connect().await.expect("Failed to connect");
+
+        let result = conn
+            .query(
+                "SELECT TO_CHAR(LEVEL) AS id, \
+                        'row-' || TO_CHAR(LEVEL) AS name, \
+                        RPAD('中文备注' || TO_CHAR(LEVEL), 240, '。') AS note \
+                 FROM DUAL CONNECT BY LEVEL <= 420 ORDER BY LEVEL",
+                &[],
+            )
+            .await
+            .expect("Large query failed");
+
+        assert_eq!(result.row_count(), 420);
+        assert_eq!(result.rows[0].get_string(0), Some("1"));
+        assert_eq!(result.rows[419].get_string(0), Some("420"));
+
+        conn.close().await.expect("Failed to close");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle database"]
     async fn test_multiple_columns() {
         let conn = connect().await.expect("Failed to connect");
 

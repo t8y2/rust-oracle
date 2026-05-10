@@ -1351,6 +1351,10 @@ impl Connection {
 
         // Auto-fetch remaining rows if response was truncated
         if let Ok(ref mut qr) = result {
+            if row_limit.is_none() && qr.cursor_id > 0 && qr.rows.len() >= fetch_size as usize {
+                qr.has_more_rows = true;
+            }
+
             if let Some(limit) = row_limit {
                 if qr.rows.len() > limit {
                     qr.rows.truncate(limit);
@@ -2835,6 +2839,10 @@ impl Connection {
                     // For now, we assume it's not the end
                 }
 
+                x if x == MessageType::EndOfResponse as u8 => {
+                    end_of_response = true;
+                }
+
                 // BitVector (21) - column presence bitmap for sparse results
                 // Bit=1 means actual data is sent, bit=0 means duplicate from previous row
                 21 => {
@@ -2853,6 +2861,13 @@ impl Connection {
                     break;
                 }
             }
+        }
+
+        if !end_of_response {
+            return Err(Error::BufferUnderflow {
+                needed: 1,
+                available: 0,
+            });
         }
 
         Ok(QueryResult {
