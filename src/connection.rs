@@ -42,7 +42,7 @@ use crate::constants::{BindDirection, FetchOrientation, FunctionCode, MessageTyp
 use crate::cursor::{ScrollableCursor, ScrollResult};
 use crate::error::{Error, Result};
 use crate::implicit::{ImplicitResult, ImplicitResults};
-use crate::messages::{AcceptMessage, AuthMessage, AuthPhase, ConnectMessage, ExecuteMessage, ExecuteOptions, FetchMessage, LobOpMessage};
+use crate::messages::{AcceptMessage, AuthMessage, AuthPhase, ConnectMessage, ExecuteMessage, ExecuteOptions, FetchMessage, LobOpMessage, RedirectMessage};
 use crate::packet::Packet;
 use crate::row::{Row, Value};
 use crate::statement::{BindParam, ColumnInfo, Statement, StatementType};
@@ -997,10 +997,39 @@ impl Connection {
                     });
                 }
                 5 => {
-                    // REDIRECT
-                    return Err(Error::ConnectionRedirect(
-                        "redirect not implemented".to_string(),
-                    ));
+                    // REDIRECT - follow the redirect to the new address
+                    let packet = Packet::from_bytes(response)?;
+                    let redirect = RedirectMessage::parse(&packet)?;
+                    let addr = redirect.socket_addr().ok_or_else(|| {
+                        Error::ConnectionRedirect(format!(
+                            "could not parse redirect address: {}",
+                            redirect.address
+                        ))
+                    })?;
+
+                    tracing::debug!(address = %addr, "following Oracle redirect");
+
+                    let tcp_stream: TcpStream = TcpStream::connect(&addr).await.map_err(|e| {
+                        Error::ConnectionRedirect(format!(
+                            "failed to connect to redirect target {}: {}",
+                            addr, e
+                        ))
+                    })?;
+                    tcp_stream.set_nodelay(true).map_err(Error::Io)?;
+
+                    let sock = socket2::SockRef::from(&tcp_stream);
+                    let keepalive = socket2::TcpKeepalive::new()
+                        .with_time(std::time::Duration::from_secs(60));
+                    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+                    let keepalive = keepalive.with_interval(std::time::Duration::from_secs(15));
+                    let _ = sock.set_tcp_keepalive(&keepalive);
+
+                    inner.stream = Some(OracleStream::Plain(tcp_stream));
+
+                    inner.send(&connect_packet).await?;
+                    if let Some(ref data_packet) = continuation {
+                        inner.send(data_packet).await?;
+                    }
                 }
                 11 => {
                     // RESEND - server requests retransmission of the connect packet
