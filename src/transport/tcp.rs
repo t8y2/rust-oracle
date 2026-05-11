@@ -5,6 +5,7 @@
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
+use socket2::SockRef;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -68,6 +69,12 @@ impl TcpTransport {
 
         // Set TCP options
         stream.set_nodelay(true).map_err(Error::Io)?;
+
+        let sock = SockRef::from(&stream);
+        let keepalive = socket2::TcpKeepalive::new().with_time(Duration::from_secs(60));
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+        let keepalive = keepalive.with_interval(Duration::from_secs(15));
+        sock.set_tcp_keepalive(&keepalive).map_err(Error::Io)?;
 
         self.stream = Some(stream);
         Ok(())

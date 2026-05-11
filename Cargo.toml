@@ -49,6 +49,9 @@ hex = "0.4"
 hostname = "0.4"
 chrono = "0.4"
 
+# TCP keep-alive
+socket2 = "0.5"
+
 # For async traits
 async-trait = "0.1"
 
