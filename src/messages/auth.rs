@@ -463,40 +463,12 @@ impl AuthMessage {
         Ok(())
     }
 
-    /// Read a string in AUTH response format: indicator + length + length_confirm + data
+    /// Read a string in AUTH response format.
     ///
-    /// The indicator byte can be:
-    /// - 0: absent/empty string
-    /// - 1: string follows (length + length_confirm + data)
-    /// - 2: extra sub-indicator byte follows (used by Oracle 19c+)
+    /// AUTH return parameters use the same UB4 outer length plus CLR string
+    /// format as python-oracledb's `read_str_with_length`.
     fn read_auth_string(buf: &mut ReadBuffer) -> Result<String> {
-        let indicator = buf.read_u8()?;
-        if indicator == 0 {
-            return Ok(String::new());
-        }
-
-        // Oracle 19c+ may use indicator=2, which prepends a sub-indicator byte
-        if indicator == 2 {
-            let sub_indicator = buf.read_u8()?;
-            if sub_indicator == 0 {
-                return Ok(String::new());
-            }
-        }
-
-        // Read length and length confirmation
-        let len = buf.read_u8()? as usize;
-        let len_confirm = buf.read_u8()? as usize;
-
-        // Oracle 19c encodes the length differently (len can be len_confirm * 3).
-        // len_confirm is the actual byte count of the data that follows.
-        let actual_len = if len != len_confirm { len_confirm } else { len };
-
-        if actual_len == 0 {
-            return Ok(String::new());
-        }
-
-        let bytes = buf.read_bytes_vec(actual_len)?;
-        Ok(String::from_utf8_lossy(&bytes).into_owned())
+        Ok(buf.read_string_with_ub4_length()?.unwrap_or_default())
     }
 
     /// Generate the verifier (session keys and combo key)
@@ -778,9 +750,9 @@ mod tests {
     }
 
     #[test]
-    fn test_read_auth_string_indicator_2_absent() {
-        // indicator=2, sub_indicator=0 means absent
-        let data = [0x02, 0x00];
+    fn test_read_auth_string_ub2_length_empty_data() {
+        // outer length=256 encoded as UB4, inner CLR length=0
+        let data = [0x02, 0x01, 0x00, 0x00];
         let mut buf = ReadBuffer::from_slice(&data);
         let result = AuthMessage::read_auth_string(&mut buf).unwrap();
         assert_eq!(result, "");
@@ -803,5 +775,17 @@ mod tests {
         let mut buf = ReadBuffer::from_slice(&data);
         let result = AuthMessage::read_auth_string(&mut buf).unwrap();
         assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_read_auth_string_long_indicator_length_254() {
+        let value = "A".repeat(254);
+        let mut data = WriteBuffer::new();
+        data.write_ub4(value.len() as u32).unwrap();
+        data.write_bytes_with_length(Some(value.as_bytes())).unwrap();
+
+        let mut buf = ReadBuffer::from_slice(data.as_slice());
+        let result = AuthMessage::read_auth_string(&mut buf).unwrap();
+        assert_eq!(result, value);
     }
 }
