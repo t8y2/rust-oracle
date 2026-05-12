@@ -2820,7 +2820,9 @@ impl Connection {
 
                 // RowHeader (6) - header info for rows
                 x if x == MessageType::RowHeader as u8 => {
-                    self.parse_row_header(&mut buf)?;
+                    if let Some(bv) = self.parse_row_header(&mut buf)? {
+                        bit_vector = Some(bv);
+                    }
                 }
 
                 // RowData (7) - actual row values
@@ -3151,22 +3153,24 @@ impl Connection {
     }
 
     /// Parse row header (TNS_MSG_TYPE_ROW_HEADER = 6)
-    fn parse_row_header(&self, buf: &mut ReadBuffer) -> Result<()> {
+    fn parse_row_header(&self, buf: &mut ReadBuffer) -> Result<Option<Vec<u8>>> {
         buf.skip_ub1()?;  // flags
         buf.skip_ub2()?;  // num requests
         buf.skip_ub4()?;  // iteration number
         buf.skip_ub4()?;  // num iters
         buf.skip_ub2()?;  // buffer length
         let num_bytes = buf.read_ub4()? as usize;
-        if num_bytes > 0 {
+        let bit_vector = if num_bytes > 0 {
             buf.skip_ub1()?;  // skip repeated length
-            buf.skip(num_bytes - 1)?;  // bit vector
-        }
+            Some(buf.read_bytes_vec(num_bytes - 1)?)
+        } else {
+            None
+        };
         let num_bytes = buf.read_ub4()? as usize;
         if num_bytes > 0 {
             buf.skip_raw_bytes_chunked()?;  // rxhrid
         }
-        Ok(())
+        Ok(bit_vector)
     }
 
     /// Parse return parameters (TNS_MSG_TYPE_PARAMETER = 8)
